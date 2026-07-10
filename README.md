@@ -1,6 +1,15 @@
-# PCAP-Mapper
+# Mitre Heat Map PCAP-Mapper
 
-This is a program to automate mapping pcaps to the Mitre Navigatior/Att&ck. Currently supports Mitre Stix v13-v19 with v18 being default. Has basic analysis tools, and is mainly used for creating Mitre heat maps.
+This is a program to automate mapping pcaps to the Mitre Navigatior/Att&ck. Currently supports Mitre Stix v13-v19 with v18 being default. Has basic analysis tools, and is mainly used for creating Mitre heat maps. There's multiple methods of analysis added, by default it's based off Mitre Stix, but also includes heuristic analysis.
+
+# Technicial Notes
+Those program was purposly made with limited python libraries.
+
+-Python
+-Flask
+-Scapy
+
+# Build
 
 How I've been building:
 1. Unzip the pcap directory
