@@ -9,7 +9,7 @@ Those program was purposly made with limited python libraries.
 -Flask
 -Scapy
 
-I've also included a simulated linux and windows test environment to verify functionality.
+I've also included a simulated linux and windows test pcap environment to verify functionality.
 
 # Build
 
