@@ -5,7 +5,7 @@ This is a program to automate mapping pcaps to the Mitre Navigatior/Att&ck. Curr
 How I've been building:
 1. Unzip the pcap directory
 2. cd into to pcap mapper directory
-3. docker system prune (clear out old saved docker file)
+3. docker system prune (clear out old saved docker file, don't do this if you have other docker containers)
 4. docker build -t pcap-mapper .
 5. docker run --rm --name pcap-mapper -p 8000:8000 -v "$PWD/uploads:/app/uploads:Z" -v "$PWD/results:/app/results:Z" --memory=8g pcap-mapper
 
