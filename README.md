@@ -57,3 +57,7 @@ Click on observable threat boxes to get what log event triggered the mapping.
 Also export the mapping to the Mitre Attack Navigator for a comprehensive view.
 
 <img width="3126" height="1548" alt="Screenshot From 2026-07-15 11-34-45" src="https://github.com/user-attachments/assets/d2242ee8-1e4e-440d-822d-59f60b9722c8" />
+
+Red shows clearly defined threats based off of PCAP information.
+Yellow shows possible threats but analysts are needed to verify false positives.
+Green shows a theoretical network coverage, based on telemetry, to map logs to multiple attack types. Shows possible attacks based off of correlated log types.
