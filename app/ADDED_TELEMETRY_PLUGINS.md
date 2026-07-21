@@ -1,0 +1,243 @@
+# Built-in Telemetry Registry Verification
+
+Verified in this package: app/telemetry/registry.py
+
+The centralized plugin-style telemetry registry contains 186 built-in telemetry plugins after this update.
+
+## Registry location
+
+- app/telemetry/registry.py
+- app/telemetry/__init__.py
+
+## Categories and counts
+
+- Windows: 15
+- Windows Server: 6
+- Linux: 13
+- Linux/Web: 2
+- Container: 10
+- macOS: 9
+- macOS/MDM: 1
+- Network: 11
+- Firewall: 15
+- Network Device: 2
+- Proxy: 1
+- Load Balancer: 2
+- SIEM: 9
+- EDR/XDR: 10
+- Identity: 11
+- Email: 6
+- SaaS: 6
+- Cloud: 18
+- Endpoint: 3
+- DNS/DHCP: 2
+- VPN: 5
+- Virtualization: 5
+- Storage: 4
+- DevOps: 6
+- Database: 7
+- OT/ICS: 7
+
+## Additional plugins added during verification pass
+
+The uploaded ZIP already contained a broad centralized telemetry registry. The following missing commonly used plugins were added to make the built-in set closer to the previously requested list:
+
+- MariaDB
+- MongoDB
+- Redis
+- OpenLDAP
+- Google Cloud IAM
+- Azure RBAC
+- Exchange Server
+- Palo Alto PAN-OS
+- Sophos Firewall
+- Fortinet FortiAnalyzer
+
+## Built-in plugin names
+
+- Windows Security
+- Windows System
+- Windows Application
+- Windows PowerShell Operational
+- Sysmon
+- Windows Defender
+- Defender for Endpoint
+- Windows Firewall
+- Task Scheduler
+- WinRM
+- WMI
+- Windows SMB
+- IIS
+- Windows Event Forwarding
+- AppLocker
+- RDP
+- Active Directory Domain Services
+- Windows DNS Server
+- Windows DHCP Server
+- AD FS
+- Windows Certificate Services
+- Linux auditd
+- Linux auth.log
+- Linux secure
+- sshd
+- sudo
+- cron
+- systemd
+- journald
+- Linux kernel
+- rsyslog
+- syslog-ng
+- Apache HTTP Server
+- Nginx
+- Docker
+- containerd
+- Podman
+- Kubernetes Audit
+- SELinux
+- AppArmor
+- Falco
+- Apple Unified Logging
+- OpenBSM
+- launchd
+- Gatekeeper
+- TCC
+- XProtect
+- Jamf
+- Santa
+- macOS Endpoint Security
+- FileVault
+- Zeek
+- Suricata
+- Packetbeat
+- NetFlow
+- IPFIX
+- Cisco ASA
+- Cisco IOS
+- Cisco NX-OS
+- Cisco Firepower
+- Palo Alto Firewall
+- Fortinet FortiGate
+- Check Point
+- SonicWall
+- pfSense
+- OPNsense
+- Squid Proxy
+- HAProxy
+- F5 BIG-IP
+- Wireless Controller
+- Microsoft Sentinel
+- Microsoft Defender XDR
+- Defender for Identity
+- Defender for Office 365
+- Defender for Cloud Apps
+- Defender for Cloud
+- Active Directory Certificate Services
+- CrowdStrike Falcon
+- Carbon Black
+- SentinelOne
+- Elastic Security
+- Splunk Enterprise Security
+- Tanium
+- Wazuh
+- Trellix
+- Trend Micro
+- Sophos Intercept X
+- Cortex XDR
+- Cybereason
+- Red Canary
+- osquery Fleet
+- AWS CloudTrail
+- AWS GuardDuty
+- AWS Security Hub
+- AWS Inspector
+- AWS Config
+- AWS IAM
+- AWS VPC Flow Logs
+- Route53 Resolver
+- Azure Activity
+- Entra ID
+- Azure Key Vault
+- Azure Storage
+- Google Cloud Audit Logs
+- Google Security Command Center
+- Google VPC Flow Logs
+- Google Cloud Armor
+- Okta
+- Duo
+- Ping Identity
+- LDAP
+- RADIUS
+- TACACS
+- FreeIPA
+- Exchange
+- Exchange Online
+- Proofpoint
+- Mimecast
+- Microsoft 365
+- Google Workspace
+- Slack
+- Teams
+- Zoom
+- Infoblox
+- Cisco Umbrella
+- Corelight
+- Arkime
+- Security Onion
+- ExtraHop RevealX
+- Juniper SRX
+- Sophos XG
+- Barracuda Firewall
+- WatchGuard
+- Versa
+- Aruba Wireless
+- AnyConnect
+- GlobalProtect
+- Pulse Secure
+- OpenVPN
+- WireGuard
+- VMware vCenter
+- VMware ESXi
+- VMware NSX
+- Hyper-V
+- Nutanix Prism
+- NetApp
+- Dell Isilon
+- Synology
+- QNAP
+- OpenShift
+- Rancher
+- AKS
+- EKS
+- GKE
+- GitHub Enterprise
+- GitLab
+- Jenkins
+- Azure DevOps
+- Terraform
+- Ansible
+- QRadar
+- LogRhythm
+- ArcSight
+- Sumo Logic
+- Chronicle
+- SQL Server
+- Oracle Database
+- PostgreSQL
+- MySQL
+- Modbus
+- DNP3
+- OPC-UA
+- BACnet
+- Siemens S7
+- Rockwell Automation
+- Schneider Electric
+- MariaDB
+- MongoDB
+- Redis
+- OpenLDAP
+- Google Cloud IAM
+- Azure RBAC
+- Exchange Server
+- Palo Alto PAN-OS
+- Sophos Firewall
+- Fortinet FortiAnalyzer

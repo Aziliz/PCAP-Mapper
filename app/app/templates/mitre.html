@@ -1,0 +1,246 @@
+{% extends 'base.html' %}{% block body %}
+{% set ec = result.get('enterprise_coverage', {}) or {} %}
+{% set model = result.get('enterprise_attack_coverage_model', {}) or {} %}
+<section class="card mitre-page">
+  <h2>MITRE ATT&CK Coverage</h2>
+  <div class="button-row mitre-subnav"><a class="btn" href="/mitre/coverage{% if job_id %}?job={{ job_id }}{% endif %}">Coverage</a><a class="btn" href="/mitre/data-sources{% if job_id %}?job={{ job_id }}{% endif %}">Data Sources</a><a class="btn" href="/mitre/normalized-events{% if job_id %}?job={{ job_id }}{% endif %}">Normalized Events</a></div>
+  <form method="get" class="inline-form" id="attackModeForm" style="margin:.5rem 0 1rem 0">
+    {% if job_id %}<input type="hidden" name="job" value="{{ job_id }}">{% endif %}
+    <label>ATT&CK processing mode
+      <select name="attack_mode">
+        <option value="stix" {% if attack_mode != 'legacy' %}selected{% endif %}>STIX processing</option>
+        <option value="legacy" {% if attack_mode == 'legacy' %}selected{% endif %}>Legacy processing</option>
+      </select>
+    </label>
+    <label>ATT&CK version
+      <select name="attack_version">
+        {% for v in supported_attack_versions or ['13','14','15','16','17','18','19'] %}<option value="{{ v }}" {% if (attack_version or '18') == v %}selected{% endif %}>Enterprise ATT&amp;CK v{{ v }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Coverage engine
+      <select name="coverage_engine">
+        <option value="stix" {% if coverage_engine != 'heuristic' %}selected{% endif %}>STIX-driven applicability/data sources (default)</option>
+        <option value="heuristic" {% if coverage_engine == 'heuristic' %}selected{% endif %}>Legacy heuristic applicability/data sources</option>
+      </select>
+    </label>
+    <button class="btn" id="attackModeApply" type="submit">Apply</button>
+    <span class="muted">{{ 'Using legacy bundled registry/rollups.' if attack_mode == 'legacy' else ('Using ATT&CK v' ~ (attack_version or '18') ~ ' STIX source-only theoretical mapping.' if coverage_engine != 'heuristic' else 'Using legacy heuristic coverage engine.') }}</span>
+  </form>
+  <div id="attackApplyProgress" class="progress-modal" aria-live="polite" style="display:none">
+    <div class="progress-modal-card">
+      <h3>Updating ATT&CK coverage model</h3>
+      <p class="muted" id="attackApplyStage">Saving settings</p>
+      <div class="bar"><div id="attackApplyBar" style="width:5%"></div></div>
+      <ol class="progress-steps">
+        <li data-step="0">Saving settings</li>
+        <li data-step="1">Loading ATT&CK dataset</li>
+        <li data-step="2">Detecting platforms and log sources</li>
+        <li data-step="3">Expanding Data Components</li>
+        <li data-step="4">Mapping ATT&CK techniques</li>
+        <li data-step="5">Building Unified Coverage Model</li>
+        <li data-step="6">Generating heat maps</li>
+        <li data-step="7">Finalizing reports and exports</li>
+      </ol>
+    </div>
+  </div>
+
+  <section class="card">
+    <h3>How to read these heat maps</h3>
+    <div class="grid">
+      <div class="card"><h3>Observed Coverage</h3><p>Direct evidence from PCAP traffic and normalized forwarded logs. This answers: <b>what was actually seen?</b></p></div>
+      <div class="card"><h3>Theoretical Coverage</h3><p>Techniques supported by <b>detected log sources only</b>, mapped through the selected ATT&amp;CK STIX bundle's data-source/data-component metadata. OS and product assumptions do not increase theoretical coverage.</p></div>
+      <div class="card"><h3>Validated Coverage</h3><p>Detection Rules or Network Rules that matched evidence. This answers: <b>what detection content fired?</b></p></div>
+    </div>
+    <p class="muted">All metrics use the same applicable ATT&CK denominator. Techniques outside the detected OS/log-source scope are gray as <b>Not Applicable</b> and do not lower percentages. A Linux-only or network-only capture is not penalized for missing Windows/macOS-only techniques.</p>
+    <div class="legend"><span class="legend-item observed">Observed — {{ ec.get('observed_count', 0) }}</span><span class="legend-item validated">Validated — {{ ec.get('validated_count', 0) }}</span><span class="legend-item covered">Theoretical — {{ ec.get('theoretical_count', 0) }}</span><span class="legend-item detectable">Detectable — {{ ec.get('detectable_count', 0) }}</span><span class="legend-item partial">Partial</span><span class="legend-item external">Out of Enterprise Visibility — {{ ec.get('external_visibility_count', 0) }}</span><span class="legend-item missing">Not Covered</span><span class="legend-item notapp">Not Applicable — {{ ec.get('not_applicable_count', 0) }}</span></div>
+  </section>
+
+  <section class="card">
+    <h3>Coverage Summary</h3>
+    <form method="post" action="/mitre/validate" class="inline-form" style="margin:.75rem 0">
+      <input type="hidden" name="job" value="{{ job_id or '' }}"><input type="hidden" name="attack_mode" value="{{ attack_mode or 'stix' }}"><input type="hidden" name="coverage_engine" value="{{ coverage_engine or 'stix' }}"><input type="hidden" name="attack_version" value="{{ attack_version or '18' }}"><button class="btn" type="submit">Validate Rules</button>
+      <span class="muted">Status: {{ result.get('rule_validation_status','not_run') }} — {{ result.get('rule_validation_message','Rule validation has not been run yet.') }}</span>
+    </form>
+    <div class="rule-validation-progress" data-job="{{ job_id or '' }}" style="display:{% if result.get('rule_validation_status') == 'running' %}block{% else %}none{% endif %}"><div class="bar"><div style="width:{{ result.get('rule_validation_progress', 0) or 0 }}%"></div></div><p class="muted"><span class="rv-percent">{{ result.get('rule_validation_progress', 0) or 0 }}%</span> — <span class="rv-message">{{ result.get('rule_validation_message', 'Rule validation has not been run yet.') }}</span></p></div>
+    <div class="grid">
+      <div class="card"><h3>Overall Coverage</h3><p style="font-size:2rem;margin:.2rem 0"><b>{{ ec.get('overall_score', 0) }}%</b></p><p>Calculated only over applicable in-enterprise techniques. Out of Enterprise Visibility and Not Applicable are excluded from the denominator.</p></div>
+      <div class="card"><h3>Observed</h3><p style="font-size:2rem;margin:.2rem 0"><b>{{ ec.get('observed_score', 0) }}%</b></p><p>{{ ec.get('observed_count', 0) }}/{{ ec.get('scoped_technique_total', 0) }} applicable techniques</p></div>
+      <div class="card"><h3>Theoretical</h3><p style="font-size:2rem;margin:.2rem 0"><b>{{ ec.get('theoretical_score', ec.get('overall_score', 0)) }}%</b></p><p>{{ ec.get('theoretical_count', 0) }}/{{ ec.get('scoped_technique_total', 0) }} applicable techniques</p></div>
+      <div class="card"><h3>Detectable</h3><p style="font-size:2rem;margin:.2rem 0"><b>{{ ec.get('detectable_count', 0) }}</b></p><p>applicable techniques have enabled rules but no rule match yet.</p></div>
+      <div class="card"><h3>Validated</h3><p style="font-size:2rem;margin:.2rem 0"><b>{{ ec.get('validated_score', 0) }}%</b></p><p>{{ ec.get('validated_count', 0) }}/{{ ec.get('scoped_technique_total', 0) }} applicable techniques</p></div>
+    </div>
+    <div class="grid">
+      <div class="card"><h3>Applicable Scope</h3><p><b>Detected scope:</b> {{ (ec.get('coverage_scope', []) or [])|join(', ') if ec.get('coverage_scope') else 'None yet' }}</p><p><b>Applicable denominator:</b> {{ ec.get('scoped_technique_total', 0) }}</p><p><b>Gray / Not Applicable:</b> {{ ec.get('not_applicable_count', 0) }}</p><p><b>Dataset:</b> {{ ec.get('dataset_label', 'ATT&CK Enterprise STIX') }}<br><b>Coverage engine:</b> {{ 'STIX-driven' if (coverage_engine or ec.get('coverage_engine')) != 'heuristic' else 'Heuristic' }}</p></div>
+      <div class="card"><h3>Detected Telemetry</h3>{% for src in ec.get('detected_sources', []) %}<span class="pill">{{ src }}</span>{% else %}<p>No telemetry sources detected yet.</p>{% endfor %}</div>
+      <div class="card"><h3>Executive Summary</h3><p>{{ ec.get('executive_summary', 'No enterprise coverage assessment available yet.') }}</p></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>ATT&CK Pipeline Diagnostics</h3>
+    {% set diag = result.get('attack_pipeline_diagnostics', {}) or {} %}
+    <div class="grid">
+      <div class="card"><h3>Event Pipeline</h3><p>Flows: {{ diag.get('flows_available', 0) }}</p><p>Normalized events: {{ diag.get('normalized_events_available', 0) }}</p><p>Events mapped to ATT&CK: {{ diag.get('normalized_events_mapped_to_attack', 0) }}</p><p>Unmapped events: {{ diag.get('normalized_events_unmapped', 0) }}</p></div>
+      <div class="card"><h3>ATT&CK IDs</h3><p>Observed IDs: {{ diag.get('observed_attack_ids', 0) }}</p><p>Event-derived IDs: {{ diag.get('event_attack_ids', 0) }}</p><p>Validated IDs: {{ diag.get('validated_attack_ids', 0) }}</p></div>
+      <div class="card"><h3>Rule Validation</h3><p>Enabled rules: {{ diag.get('rules_enabled', 0) }}</p><p>Total matches: {{ diag.get('rule_matches_total', 0) }}</p><p>Flow matches: {{ diag.get('rule_matches_from_flows', 0) }}</p><p>Normalized-event matches: {{ diag.get('rule_matches_from_normalized_events', 0) }}</p></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Coverage by ATT&CK Tactic</h3>
+    <p class="muted">Rollups use the detected OS/log-source applicable denominator. Tactics with no applicable techniques do not reduce the score.</p>
+    <h4>Observed</h4><div class="heat">{% for t in (tactic_rollups.get('observed', []) if tactic_rollups else []) %}<div class="box observed"><b>{{ t.get('name') }}</b><br><span style="font-size:1.5rem">{{ t.get('score', 0) }}%</span><br><div class="bar small"><div style="width:{{ t.get('score',0) }}%"></div></div><small>{{ t.get('covered', 0) }}/{{ t.get('total', 0) }} applicable · {{ t.get('external_visibility', 0) }} out-of-enterprise · {{ t.get('not_applicable', 0) }} gray</small></div>{% else %}<p>No observed tactic coverage calculated yet.</p>{% endfor %}</div>
+    <h4>Theoretical</h4><div class="heat">{% for t in (tactic_rollups.get('theoretical', []) if tactic_rollups else ec.get('tactic_coverage', [])) %}<div class="box coverage"><b>{{ t.get('name') }}</b><br><span style="font-size:1.5rem">{{ t.get('score', 0) }}%</span><br><div class="bar small"><div style="width:{{ t.get('score',0) }}%"></div></div><small>{{ t.get('covered', 0) }}/{{ t.get('total', 0) }} applicable · {{ t.get('external_visibility', 0) }} out-of-enterprise · {{ t.get('not_applicable', 0) }} gray</small></div>{% else %}<p>No theoretical tactic coverage calculated yet.</p>{% endfor %}</div>
+    <h4>Validated</h4><div class="heat">{% for t in (tactic_rollups.get('validated', []) if tactic_rollups else []) %}<div class="box validated"><b>{{ t.get('name') }}</b><br><span style="font-size:1.5rem">{{ t.get('score', 0) }}%</span><br><div class="bar small"><div style="width:{{ t.get('score',0) }}%"></div></div><small>{{ t.get('covered', 0) }}/{{ t.get('total', 0) }} applicable · validation shown in cards/reports</small></div>{% else %}<p>No validated tactic coverage yet. Click Validate Rules to populate this category.</p>{% endfor %}</div>
+  </section>
+
+  <section class="card mitre-overlay-section">
+    <h3>Environment-Scoped Coverage Overlay</h3>
+    <p class="muted">Use the view selector, filters, and toggles to analyze the matrix without leaving the page. Unified color priority is Observed red, then Validated yellow, then Covered/Theoretical green. Out of Enterprise Visibility and Not Applicable are excluded from coverage percentages.</p>
+    <div class="mitre-controls">
+      <label>Heat map view <select id="mitreView"><option value="unified">Unified</option><option value="observed">Observed</option><option value="validated">Validated</option><option value="theoretical">Theoretical</option><option value="detectable">Detectable / Rule Coverage</option><option value="datasource">Data Source Coverage</option></select></label>
+      <label>Search <input id="mitreSearch" type="search" placeholder="Technique ID or name"></label>
+      <label>Tactic <select id="mitreTactic"><option value="">All tactics</option>{% if tactic_rollups %}{% for t in tactic_rollups.get('theoretical', []) %}<option value="{{ t.get('name') }}">{{ t.get('name') }}</option>{% endfor %}{% endif %}</select></label>
+      <label>State <select id="mitreState"><option value="">All states</option><option value="observed">Observed</option><option value="validated">Validated</option><option value="coverage">Theoretical</option><option value="detectable">Detectable</option><option value="external">Out of Enterprise Visibility</option><option value="missing">Not Covered</option><option value="notapp">Not Applicable</option></select></label>
+    </div>
+    <div class="overlay-toggles">
+      <label><input type="checkbox" data-overlay-toggle="observed" checked> Observed</label>
+      <label><input type="checkbox" data-overlay-toggle="validated" checked> Validated</label>
+      <label><input type="checkbox" data-overlay-toggle="coverage" checked> Theoretical</label>
+      <label><input type="checkbox" data-overlay-toggle="detectable"> Detectable</label>
+      <label><input type="checkbox" data-overlay-toggle="partial"> Partial</label>
+      <label><input type="checkbox" data-overlay-toggle="external"> Out of Enterprise Visibility</label>
+      <label><input type="checkbox" data-overlay-toggle="missing"> Not Covered</label>
+      <label><input type="checkbox" data-overlay-toggle="notapp"> Not Applicable</label>
+    </div>
+    <div class="heat mitre-overlay-heat" id="mitreOverlayCards">
+      {% for t in ec.get('coverage_states', []) %}
+        {% set cls = 'observed' if t.get('observed') else 'validated' if t.get('validated') else 'coverage' if t.get('theoretical') and t.get('score',0) >= 70 else 'partial' if t.get('theoretical') else 'detectable' if t.get('rule') else 'external' if t.get('external_visibility') else 'notapp' if not t.get('applicable', True) else 'missing' %}
+        <div class="box {{ cls }} overlay-card" role="button" tabindex="0" data-overlay-state="{{ cls }}" data-unified-state="{{ cls }}" data-tactic="{{ t.get('tactic','') }}" data-search="{{ (t.get('techniqueID','') ~ ' ' ~ t.get('name','') ~ ' ' ~ t.get('tactic',''))|lower }}" data-observed="{{ 1 if t.get('observed') else 0 }}" data-validated="{{ 1 if t.get('validated') else 0 }}" data-theoretical="{{ 1 if t.get('theoretical') else 0 }}" data-detectable="{{ 1 if t.get('rule') else 0 }}" data-applicable="{{ 1 if t.get('applicable', True) else 0 }}" data-external="{{ 1 if t.get('external_visibility') else 0 }}" data-title="{{ t.get('techniqueID') }} — {{ t.get('name') }}" data-technique-id="{{ t.get('techniqueID') }}" data-technique-name="{{ t.get('name') }}" data-observed-ip="{{ t.get('observed_source_ip','') }}" data-observed-dst="{{ t.get('observed_dst_ip','') }}" data-observed-host="{{ t.get('observed_host','') }}" data-observed-sources="{{ t.get('observed_sources','') }}" data-observed-events="{{ t.get('observed_event_count',0) }}" data-observed-flows="{{ t.get('observed_flow_count',0) }}" data-observed-evidence="{{ t.get('observed_evidence','') }}" data-observed-full-event="{{ t.get('observed_full_event','')|e }}" data-detail="State: {{ t.get('state','') }} | Tactic: {{ t.get('tactic','') }} | Applicable: {{ 'Yes' if t.get('applicable', True) else 'No' }} | Rule: {{ 'Yes' if t.get('rule') else 'No' }} | Validated: {{ 'Yes' if t.get('validated') else 'No' }}{% if t.get('external_visibility') %} | Out of Enterprise Visibility: {{ t.get('external_visibility_reason') }}{% elif not t.get('applicable', True) %} | Not Applicable: outside detected OS/log-source scope{% endif %}"><b>{{t.get('techniqueID')}}</b><br>{{t.get('name')}}<br><small>{{t.get('tactic')}}</small><br><b>{{t.get('state','')}}</b><br><small>Applicable: {{ 'Yes' if t.get('applicable', True) else 'No' }} · Rule: {{ 'Yes' if t.get('rule') else 'No' }} · Validated: {{ 'Yes' if t.get('validated') else 'No' }}</small>{% if t.get('external_visibility') %}<div class="na-reason">Out of Enterprise Visibility: {{ t.get('external_visibility_reason') }}</div>{% elif not t.get('applicable', True) %}<div class="na-reason">Not applicable because this technique is outside the detected OS/log-source scope: {{ (ec.get('coverage_scope', []) or ['no OS/log data detected'])|join(', ') }}.</div>{% endif %}{% if t.get('out_of_scope_validated_match') %}<br><small>Out-of-scope validation ignored for this environment.</small>{% endif %}</div>
+      {% else %}<p>No coverage states available.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="card">
+    <h3>Coverage Gaps and Recommendations</h3>
+    <div class="grid">
+      <div class="card"><h3>Gaps</h3>{% for g in ec.get('gaps', []) %}<p><b>{{ g.get('tactic') }}</b>: {{ g.get('gap') }} ({{ g.get('coverage') }}%)</p>{% else %}<p>No major mapped gaps identified.</p>{% endfor %}</div>
+      <div class="card"><h3>Recommended Telemetry Improvements</h3><p class="muted">Recommendations are limited to detected OS/log-source scope.</p>{% for r in ec.get('recommendations', []) %}<p><b>{{ r.get('source') }}</b> (+{{ r.get('gain') }}% est.)<br><small>{{ r.get('reason') }}</small></p>{% else %}<p>No recommendations available for the detected OS/log-source scope.</p>{% endfor %}</div>
+      <div class="card"><h3>Detection Rule Coverage</h3>{% set rc = ec.get('rule_coverage', {}) or {} %}<p>Techniques with rules: {{ rc.get('techniques_with_rules', 0) }}</p><p>Applicable techniques with rules: {{ rc.get('applicable_techniques_with_rules', 0) }}</p><p>Detectable, not yet validated: {{ rc.get('detectable_techniques', 0) }}</p><p>Applicable without rules: {{ rc.get('applicable_without_rules', 0) }}</p><p>Validated techniques: {{ rc.get('validated_techniques', 0) }}</p></div>
+    </div>
+  </section>
+</section>
+<aside id="techniquePanel" class="technique-panel" aria-live="polite"><button type="button" id="techniquePanelClose" class="panel-close">×</button><h3 id="techniquePanelTitle">Technique detail</h3><p id="techniquePanelDetail" class="muted"></p><div id="observedTriggerDetail" class="mini-card" style="display:none"></div><p class="muted">This panel explains the selected technique state using the Unified Coverage Model.</p><div id="observedDrillLinks" class="button-row" style="display:none"><a class="btn" id="obsAssets" href="#">Assets</a><a class="btn" id="obsComms" href="#">Communications</a><a class="btn" id="obsLogs" href="#">Log Sources</a><a class="btn" id="obsEvents" href="#">Events</a></div></aside>
+<script>
+(function(){
+  const form=document.getElementById('attackModeForm');
+  const modal=document.getElementById('attackApplyProgress');
+  const bar=document.getElementById('attackApplyBar');
+  const stage=document.getElementById('attackApplyStage');
+  const applyBtn=document.getElementById('attackModeApply');
+  if(form && modal){
+    const steps=[...modal.querySelectorAll('[data-step]')];
+    const labels=steps.map(s=>s.textContent.trim());
+    form.addEventListener('submit',()=>{
+      modal.style.display='flex';
+      if(applyBtn){ applyBtn.textContent='Processing...'; applyBtn.setAttribute('aria-disabled','true'); }
+      let i=0;
+      function tick(){
+        const pct=Math.min(95, 8 + i*12);
+        bar.style.width=pct+'%';
+        stage.textContent=labels[Math.min(i, labels.length-1)] || 'Processing';
+        steps.forEach((s,idx)=>s.classList.toggle('active', idx<=i));
+        i=Math.min(i+1, labels.length-1);
+      }
+      tick(); setInterval(tick, 650);
+    });
+  }
+
+  const toggles=[...document.querySelectorAll('[data-overlay-toggle]')];
+  const cards=[...document.querySelectorAll('.overlay-card')];
+  const view=document.getElementById('mitreView');
+  const search=document.getElementById('mitreSearch');
+  const tactic=document.getElementById('mitreTactic');
+  const state=document.getElementById('mitreState');
+  function classFor(card){
+    const mode=view ? view.value : 'unified';
+    if(mode==='observed') return card.dataset.observed==='1' ? 'observed' : (card.dataset.external==='1'?'external':card.dataset.applicable==='0'?'notapp':'missing');
+    if(mode==='validated') return card.dataset.validated==='1' ? 'validated' : (card.dataset.external==='1'?'external':card.dataset.applicable==='0'?'notapp':'missing');
+    if(mode==='theoretical' || mode==='datasource') return card.dataset.theoretical==='1' ? 'coverage' : (card.dataset.external==='1'?'external':card.dataset.applicable==='0'?'notapp':'missing');
+    if(mode==='detectable') return card.dataset.detectable==='1' ? 'detectable' : (card.dataset.external==='1'?'external':card.dataset.applicable==='0'?'notapp':'missing');
+    return card.dataset.unifiedState || card.dataset.overlayState || 'missing';
+  }
+  function apply(){
+    const enabled=new Set(toggles.filter(t=>t.checked).map(t=>t.dataset.overlayToggle));
+    const q=(search && search.value || '').toLowerCase().trim();
+    const tac=(tactic && tactic.value || '').trim();
+    const st=(state && state.value || '').trim();
+    cards.forEach(c=>{
+      const cls=classFor(c);
+      c.classList.remove('observed','validated','coverage','detectable','partial','external','missing','notapp');
+      c.classList.add(cls);
+      c.dataset.overlayState=cls;
+      const showState=enabled.has(cls);
+      const showSearch=!q || (c.dataset.search||'').includes(q);
+      const showTactic=!tac || c.dataset.tactic===tac;
+      const showFilter=!st || cls===st;
+      c.style.display=(showState && showSearch && showTactic && showFilter)?'block':'none';
+    });
+  }
+  toggles.forEach(t=>t.addEventListener('change',apply));
+  [view,search,tactic,state].forEach(el=>{ if(el) el.addEventListener('input',apply); if(el) el.addEventListener('change',apply); });
+  apply();
+
+  const panel=document.getElementById('techniquePanel');
+  const title=document.getElementById('techniquePanelTitle');
+  const detail=document.getElementById('techniquePanelDetail');
+  const close=document.getElementById('techniquePanelClose');
+  function openPanel(card){
+    if(!panel) return;
+    title.textContent=card.dataset.title||'Technique detail';
+    detail.textContent=card.dataset.detail||'';
+    const links=document.getElementById('observedDrillLinks');
+    const trigger=document.getElementById('observedTriggerDetail');
+    const tid=card.dataset.techniqueId || '';
+    const q=tid || card.dataset.techniqueName || card.dataset.title || '';
+    const ip=card.dataset.observedIp || '';
+    const dst=card.dataset.observedDst || '';
+    const host=card.dataset.observedHost || '';
+    const evidence=card.dataset.observedEvidence || '';
+    const fullEvent=card.dataset.observedFullEvent || '';
+    const sources=card.dataset.observedSources || '';
+    const job='{{ job_id or '' }}';
+    const sep=job ? '&' : '?';
+    const baseJob=job ? ('?job=' + encodeURIComponent(job)) : '';
+    function esc(v){ return String(v || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    if(links){
+      if(card.dataset.observed==='1'){
+        links.style.display='flex';
+        if(trigger){
+          trigger.style.display='block';
+          trigger.innerHTML='<b>Observed trigger</b><br>'+
+            '<small>Source IP: '+esc(ip || 'unknown')+'</small><br>'+
+            (dst ? '<small>Destination IP: '+esc(dst)+'</small><br>' : '')+
+            (host ? '<small>Host/asset: '+esc(host)+'</small><br>' : '')+
+            '<small>Evidence sources: '+esc(sources || 'observed analysis data')+'</small><br>'+
+            '<small>Events: '+esc(card.dataset.observedEvents || '0')+' · Flows: '+esc(card.dataset.observedFlows || '0')+'</small>'+
+            (evidence ? '<p class="muted">'+esc(evidence)+'</p>' : '')+
+            (fullEvent ? '<div class="observed-full-event"><b>Full observed event</b><pre>'+esc(fullEvent)+'</pre></div>' : '<p class="muted">No detailed event object was stored for this observation.</p>');
+        }
+        const ipParam=encodeURIComponent(ip || q);
+        document.getElementById('obsAssets').href='/assets' + baseJob + sep + 'ip=' + ipParam;
+        document.getElementById('obsComms').href='/communications' + baseJob + sep + 'ip=' + ipParam + '&src=' + ipParam;
+        document.getElementById('obsLogs').href='/log-sources' + baseJob + sep + 'ip=' + ipParam;
+        document.getElementById('obsEvents').href='/events' + baseJob + sep + 'attack=' + encodeURIComponent(tid);
+      } else {
+        links.style.display='none';
+        if(trigger) trigger.style.display='none';
+      }
+    }
+    panel.classList.add('open');
+  }
+  cards.forEach(c=>{ c.addEventListener('click',()=>openPanel(c)); c.addEventListener('keydown',e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); openPanel(c); }}); });
+  if(close) close.addEventListener('click',()=>panel.classList.remove('open'));
+})();
+</script>
+{% endblock %}

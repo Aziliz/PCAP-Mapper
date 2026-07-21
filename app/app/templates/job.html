@@ -1,0 +1,42 @@
+{% extends 'base.html' %}
+{% block body %}
+<section class="card">
+  <div class="row-between">
+    <div>
+      <h2>Job Progress</h2>
+      <p><b>Name:</b> <span id="jobname">{{ job.name if job and job.name else job_id }}</span></p>
+    </div>
+    <form method="post" action="/jobs/{{ job_id }}/rename" class="inline-form rename-form">
+      <input type="hidden" name="next" value="/jobs/{{ job_id }}">
+      <input name="name" value="{{ job.name if job and job.name else '' }}" placeholder="Job name">
+      <button type="submit">Rename</button>
+    </form>
+  </div>
+  <p id="msg">{{job.message if job else ''}}</p>
+  <p><b>Overall:</b> <span id="pct">{{job.progress if job else 0}}</span>%</p>
+  <div class="bar"><div id="bar" style="width:{{job.progress if job else 0}}%"></div></div>
+  {% set sp = job.stage_progress if job and job.stage_progress else {} %}
+  {% set pipeline = [
+    ('uploading','Upload'),('decompressing','Decompress'),('packet_parse','Packet Parse'),('storage','Storage Policy'),('flow_reconstruction','Flow Reconstruction'),('normalization','Event Normalization'),
+    ('asset_discovery','Asset Discovery'),('log_source_detection','Log Source Detection'),('rule_validation','Rule Evaluation'),('attack_mapping','ATT&CK Mapping'),('coverage_model','Coverage Model'),('reports','Reports')
+  ] %}
+  <div class="stage-grid pipeline-grid">
+    {% for key,label in pipeline %}
+    <div class="stage-card"><b>{{ label }}</b><span class="stage-pct" id="stage-{{key}}-pct">{{ sp.get(key, 0) }}%</span><div class="bar small"><div id="stage-{{key}}-bar" style="width:{{ sp.get(key, 0) }}%"></div></div></div>
+    {% endfor %}
+  </div>
+  <p><b>Current file read:</b> <span id="filepct">{{job.current_file_progress if job else 0}}</span>%</p>
+  <div class="bar"><div id="filebar" style="width:{{job.current_file_progress if job else 0}}%"></div></div>
+  <p><b>Packets:</b> <span id="packets">{{job.packets if job else 0}}</span></p>
+  <p><b>Current file:</b> <span id="file">{{job.current_file if job else ''}}</span></p>
+  <p id="storage-indicator"><b>Storage:</b> {% if job.storage_capture_deleted %}Parsed data only; original capture deleted by policy{% elif job.storage_compression_complete %}Archived as .gz{% elif job.storage_archive_policy == 'keep_raw' %}Raw capture retained{% else %}Pending{% endif %}</p>
+  <pre id="raw">{{ job | tojson(indent=2) }}</pre>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+function clamp(n){n=Number(n||0);return Math.max(0,Math.min(100,Math.round(n)))}
+function setStage(key,p){p=clamp(p); const pct=document.getElementById('stage-'+key+'-pct'); const bar=document.getElementById('stage-'+key+'-bar'); if(pct)pct.textContent=p+'%'; if(bar)bar.style.width=p+'%';}
+async function poll(){let r=await fetch('/api/jobs/{{job_id}}',{cache:'no-store'});let j=await r.json();let p=clamp(j.progress);let fp=clamp(j.current_file_progress);let sp=j.stage_progress||{};document.getElementById('msg').textContent=j.message||j.state||'';document.getElementById('pct').textContent=p;document.getElementById('bar').style.width=p+'%';['uploading','decompressing','packet_parse','storage','flow_reconstruction','normalization','asset_discovery','log_source_detection','rule_validation','attack_mapping','coverage_model','reports'].forEach(k=>setStage(k,sp[k]));document.getElementById('filepct').textContent=fp;document.getElementById('filebar').style.width=fp+'%';document.getElementById('packets').textContent=j.packets||0;document.getElementById('file').textContent=j.current_file||'';document.getElementById('jobname').textContent=j.name||j.id||'';const si=document.getElementById('storage-indicator'); if(si){let text='Pending'; if(j.storage_capture_deleted) text='Parsed data only; original capture deleted by policy'; else if(j.storage_compression_complete) text='Archived as .gz'; else if(j.storage_archive_policy==='keep_raw') text='Raw capture retained'; si.innerHTML='<b>Storage:</b> '+text;}document.getElementById('raw').textContent=JSON.stringify(j,null,2);if(j.state!=='complete'&&j.state!=='failed'&&j.state!=='new'&&j.state!=='stopped')setTimeout(poll,1500)}poll();
+</script>
+{% endblock %}

@@ -1,0 +1,102 @@
+{% extends 'base.html' %}{% block body %}
+<h2>Normalized Events</h2>
+<p class="muted">v2 Phase 3 makes forwarded logs and telemetry searchable, explainable, exportable, and usable as ATT&CK/rule evidence.</p>
+<section class="grid">
+  <div class="card"><h3>Summary</h3><p><b>Total normalized events:</b> {{ summary.total_events or 0 }}</p><p><b>Visible events:</b> {{ events|length }}</p><p><b>Mapped ATT&CK IDs:</b> {{ (summary.attack_candidate_counts or {})|length }}</p></div>
+  <div class="card"><h3>Platforms</h3>{% for k,v in (summary.by_platform or {}).items() %}<span class="pill">{{k}}: {{v}}</span>{% else %}<p>No platform events yet.</p>{% endfor %}</div>
+  <div class="card"><h3>Log Sources</h3>{% for k,v in (summary.by_log_source or {}).items() %}<span class="pill">{{k}}: {{v}}</span>{% else %}<p>No log sources parsed yet.</p>{% endfor %}</div>
+</section>
+<section class="card">
+  <h3>Search and Filter</h3>
+  <form method="get" action="/events" class="event-filters">
+    <input type="hidden" name="job" value="{{ job_id or '' }}">
+    <input name="q" value="{{ filters.q or '' }}" placeholder="Search raw/event text">
+    <input name="platform" value="{{ filters.platform or '' }}" placeholder="Platform">
+    <input name="log_source" value="{{ filters.log_source or '' }}" placeholder="Log source">
+    <input name="event_type" value="{{ filters.event_type or '' }}" placeholder="Event type">
+    <input name="host" value="{{ filters.host or '' }}" placeholder="Host">
+    <input name="attack" value="{{ filters.attack or '' }}" placeholder="ATT&CK ID">
+    <button class="btn" type="submit">Filter</button>
+    <a class="btn" href="/events?job={{ job_id or '' }}">Clear</a>
+  </form>
+  <div class="button-row"><a class="btn" href="/events/export/json?job={{ job_id or '' }}">Export JSON</a><a class="btn" href="/events/export/csv?job={{ job_id or '' }}">Export CSV</a><a class="btn" href="/events/export/md?job={{ job_id or '' }}">Export Markdown</a><a class="btn" href="/events/export/ndjson?job={{ job_id or '' }}">Elastic NDJSON</a><a class="btn" href="/timeline?job={{ job_id or '' }}">Timeline</a></div>
+</section>
+<section class="card"><h3>ATT&CK Candidates from Events</h3>{% for k,v in (summary.attack_candidate_counts or {}).items() %}<span class="pill">{{k}}: {{v}}</span>{% else %}<p>No event-derived ATT&CK candidates yet.</p>{% endfor %}</section>
+<section class="event-layout">
+  <div class="card event-table-card"><h3>Normalized Events</h3>
+    <table id="eventTable"><thead><tr><th>Time</th><th>Platform</th><th>Source</th><th>Type</th><th>Host</th><th>User</th><th>ATT&CK</th><th>Actions</th></tr></thead>
+    <tbody>
+    {% for e in events[:1000] %}
+      <tr data-index="{{ loop.index0 }}" data-event-id="{{ e.event_id }}" onclick="showEventDetails({{ loop.index0 }})">
+        <td>{{ e.timestamp }}</td><td>{{ e.platform }}</td><td>{{ e.log_source }}</td><td>{{ e.event_type }}</td><td>{{ e.host }}</td><td>{{ e.user }}</td><td>{{ (e.attack_candidates or [])|join(', ') }}</td>
+        <td><button class="btn event-detail-btn" type="button" onclick="event.stopPropagation(); showEventDetails({{ loop.index0 }});">Details</button></td>
+      </tr>
+    {% else %}<tr><td colspan="8">No normalized events found.</td></tr>{% endfor %}
+    </tbody></table>
+  </div>
+  <div class="card event-detail-card"><h3>Event Details</h3>
+    <div id="eventDetailEmpty" class="muted">Select an event to inspect raw payload, ATT&CK candidates, related flow hints, and rule creation.</div>
+    <div id="eventDetailBody" style="display:none"></div>
+  </div>
+</section>
+<section class="card"><h3>Unmapped Event Review</h3>
+<table><tr><th>Platform</th><th>Source</th><th>Type</th><th>Host</th><th>Reason</th><th>Raw</th></tr>
+{% for e in unmapped[:200] %}<tr><td>{{ e.platform }}</td><td>{{ e.log_source }}</td><td>{{ e.event_type }}</td><td>{{ e.host }}</td><td>No ATT&CK candidate mapped by current parser/rules.</td><td><small>{{ e.raw }}</small></td></tr>{% else %}<tr><td colspan="6">No unmapped events in the current filter.</td></tr>{% endfor %}
+</table></section>
+
+<script id="events-json" type="application/json">{{ events[:1000] | tojson }}</script>
+<script>
+const normalizedEvents = JSON.parse(document.getElementById('events-json').textContent || '[]');
+const eventJobId = {{ (job_id or '') | tojson }};
+function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
+function pillHtml(text){ return `<span class="pill">${esc(text)}</span>`; }
+function link(path, params){
+  const q = new URLSearchParams();
+  if(eventJobId) q.set('job', eventJobId);
+  Object.entries(params || {}).forEach(([k,v]) => { if(v) q.set(k, v); });
+  return `${path}?${q.toString()}`;
+}
+function showEventDetails(index){
+  const e = normalizedEvents[index];
+  if(!e) return;
+  document.querySelectorAll('#eventTable tbody tr').forEach(tr => tr.classList.toggle('selected-flow', Number(tr.dataset.index) === index));
+  document.getElementById('eventDetailEmpty').style.display = 'none';
+  const body = document.getElementById('eventDetailBody');
+  body.style.display = '';
+  const attacks = Array.isArray(e.attack_candidates) ? e.attack_candidates : [];
+  const srcIp = e.src_ip || e.source_ip || e.client_ip || e.ip || '';
+  const dstIp = e.dst_ip || e.destination_ip || e.server_ip || '';
+  const ipLinks = [srcIp, dstIp].filter(Boolean).map(ip => `<a class="pill" href="${link('/communications', {ip})}">${esc(ip)}</a>`).join(' ');
+  body.innerHTML = `
+    <div class="detail-grid">
+      <div><b>ID</b><br>${esc(e.event_id)}</div>
+      <div><b>Time</b><br>${esc(e.timestamp)}</div>
+      <div><b>Platform</b><br>${esc(e.platform)}</div>
+      <div><b>Log source</b><br>${esc(e.log_source)}</div>
+      <div><b>Event type</b><br>${esc(e.event_type)}</div>
+      <div><b>Host</b><br>${esc(e.host)}</div>
+      <div><b>User</b><br>${esc(e.user)}</div>
+      <div><b>Process</b><br>${esc(e.process)}</div>
+    </div>
+    <p><b>Command:</b> ${esc(e.command_line || '') || '<span class="muted">None</span>'}</p>
+    <p><b>ATT&CK:</b> ${attacks.length ? attacks.map(t => `<a class="pill" href="${link('/mitre', {attack:t})}">${esc(t)}</a>`).join(' ') : '<span class="muted">None mapped</span>'}</p>
+    <p><b>Related IPs:</b> ${ipLinks || '<span class="muted">No source/destination IP fields on this normalized event.</span>'}</p>
+    <form method="post" action="/events/rule-from-event"><input type="hidden" name="job" value="${esc(eventJobId)}"><input type="hidden" name="event_id" value="${esc(e.event_id)}"><button class="btn" type="submit">Create Detection Rule from Event</button></form>
+    <h4>Raw Payload</h4><pre>${esc(e.raw || '')}</pre>
+  `;
+  if(history && history.replaceState){
+    const url = new URL(window.location.href);
+    url.searchParams.set('event_id', e.event_id || '');
+    history.replaceState(null, '', url.toString());
+  }
+}
+(function(){
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get('event_id');
+  if(requested){
+    const idx = normalizedEvents.findIndex(e => String(e.event_id || '') === requested);
+    if(idx >= 0) showEventDetails(idx);
+  }
+})();
+</script>
+{% endblock %}

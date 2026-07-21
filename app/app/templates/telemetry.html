@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+{% block body %}
+<h2>Telemetry · Plugin Registry</h2>
+{% if message %}<div class="banner">{{ message }}</div>{% endif %}
+
+<section class="card">
+  <h3>Registry Health</h3>
+  <div class="grid metrics">
+    <div class="mini-card"><b>Total plugins</b><br><span class="big-number">{{ library_summary.total_plugins or validation.plugin_count }}</span></div>
+    <div class="mini-card"><b>Active plugins</b><br><span class="big-number">{{ library_summary.plugin_count or 0 }}</span></div>
+    <div class="mini-card"><b>Observed definitions</b><br><span class="big-number">{{ library_summary.observed_component_definitions or 0 }}</span></div>
+    <div class="mini-card"><b>Potential definitions</b><br><span class="big-number">{{ library_summary.potential_component_definitions or 0 }}</span></div>
+    <div class="mini-card"><b>Dataset</b><br><span class="big-number">{{ 'Loaded' if has_active_dataset else 'N/A' }}</span></div>
+    <div class="mini-card"><b>Status</b><br><span class="big-number">{{ 'OK' if validation.ok else 'Issues' }}</span></div>
+  </div>
+  {% if not has_active_dataset %}<p class="muted">No active dataset is loaded. Plugin cards show static registry definitions, while Observed/Potential runtime counts are marked N/A until a job with parsed telemetry is active.</p>{% endif %}
+  {% if validation.errors %}<h4>Errors</h4><ul>{% for e in validation.errors %}<li>{{ e }}</li>{% endfor %}</ul>{% endif %}
+  {% if validation.warnings %}<details><summary>Validation warnings</summary><ul>{% for w in validation.warnings %}<li>{{ w }}</li>{% endfor %}</ul></details>{% endif %}
+</section>
+
+<section class="card">
+  <div class="telemetry-toolbar">
+    <form method="get" class="telemetry-filter-left">
+      <label>Search plugins
+        <input type="search" name="search" value="{{ search or '' }}" placeholder="Search by name, alias, or description">
+      </label>
+      <label>Category
+        <select name="category" onchange="this.form.submit()">
+          {% for c in categories %}<option value="{{ c }}" {% if c == selected_category %}selected{% endif %}>{{ c }}</option>{% endfor %}
+        </select>
+      </label>
+    </form>
+    <div class="telemetry-filter-right">
+      <h3>Active and Available Plugins</h3>
+      <form method="get" class="telemetry-action-form">
+        <input type="hidden" name="search" value="{{ search or '' }}">
+        <input type="hidden" name="category" value="{{ selected_category }}">
+        <button type="submit">Filter</button>
+      </form>
+      <a class="btn" href="{{ url_for('telemetry_plugins_page') }}">Clear</a>
+      <a class="btn" href="{{ url_for('telemetry_export_plugins') }}">Export plugins</a>
+    </div>
+  </div>
+
+  <div class="telemetry-plugin-list">
+    {% for p in plugins %}
+    <details class="telemetry-plugin-card" data-category="{{ p.category }}">
+      <summary class="telemetry-plugin-summary">
+        <span class="telemetry-plugin-main">
+          <b>{{ p.name }}</b>
+          <small>{{ p.description }}</small>
+        </span>
+        <span class="telemetry-plugin-meta">
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Category</span><span class="pill telemetry-category-pill">{{ p.category }}</span></span>
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Status</span><span class="pill telemetry-status-pill {{ 'telemetry-enabled' if p.enabled else 'telemetry-disabled' }}">{{ 'Enabled' if p.enabled else 'Disabled' }}</span></span>
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Quality</span><span class="pill telemetry-quality-pill {{ 'telemetry-quality-strong' if p.quality == 'strong' else 'telemetry-quality-partial' }}">{{ p.quality }}</span></span>
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Source</span><span class="pill telemetry-source-pill {{ 'telemetry-source-built-in' if p.source == 'built-in' else 'telemetry-source-custom' }}">{{ p.source }}</span></span>
+          {% set rt = runtime_by_plugin.get(p.name) if runtime_by_plugin else None %}
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Observed</span><span class="pill telemetry-observed-pill">{{ rt.observed_count if rt else 'N/A' }}</span></span>
+          <span class="telemetry-labeled-pill"><span class="telemetry-label-heading">Potential</span><span class="pill telemetry-potential-pill">{{ rt.potential_count if rt else 'N/A' }}</span></span>
+        </span>
+        <span class="telemetry-plugin-summary-actions">
+          <form method="post" action="{{ url_for('telemetry_toggle_plugin', name=p.name) }}" onclick="event.stopPropagation()">
+            <input type="hidden" name="enabled" value="{{ '0' if p.enabled else '1' }}">
+            <input type="hidden" name="return_category" value="{{ selected_category }}">
+            <input type="hidden" name="return_search" value="{{ search or '' }}">
+            <button type="submit">{{ 'Disable plugin' if p.enabled else 'Enable plugin' }}</button>
+          </form>
+          <form method="post" action="{{ url_for('telemetry_delete_plugin', name=p.name) }}" onclick="event.stopPropagation()" onsubmit="event.stopPropagation(); return confirm('Delete custom plugin or disable built-in plugin?')">
+            <input type="hidden" name="return_category" value="{{ selected_category }}">
+            <input type="hidden" name="return_search" value="{{ search or '' }}">
+            <button type="submit">Delete plugin</button>
+          </form>
+        </span>
+      </summary>
+
+      <div class="telemetry-plugin-detail-grid">
+        <div class="mini-card">
+          <b>Aliases</b>
+          <p>{{ p.aliases|join(', ') if p.aliases else 'None' }}</p>
+        </div>
+        <details class="mini-card telemetry-component-panel">
+          <summary><b>Observed Definitions</b> <span class="pill telemetry-observed-pill">{{ p.observed_components|length }}</span></summary>
+          <p class="muted">Static evidence-backed capabilities this plugin can contribute when the product/log source is detected. Runtime counts stay N/A until a dataset is loaded.</p>
+          <div class="telemetry-component-scroll">
+            {% if p.observed_components %}
+            <ul>
+              {% for c in p.observed_components %}
+              <li><b>{{ c }}</b><br><small>Triggered by detecting <b>{{ p.name }}</b> through aliases such as {{ p.aliases[:6]|join(', ') }}. Confidence: {{ p.confidence }}.</small></li>
+              {% endfor %}
+            </ul>
+            {% else %}<p>None</p>{% endif %}
+          </div>
+        </details>
+        <details class="mini-card telemetry-component-panel">
+          <summary><b>Potential Definitions</b> <span class="pill telemetry-potential-pill">{{ p.potential_components|length }}</span></summary>
+          <p class="muted">Static capabilities this telemetry product can support when fully configured or integrated. Runtime potential is only calculated for an active dataset.</p>
+          <div class="telemetry-component-scroll">
+            {% if p.potential_components %}
+            <ul>
+              {% for c in p.potential_components %}
+              <li><b>{{ c }}</b><br><small>Potential because <b>{{ p.name }}</b> commonly supports this capability. Confirm configuration, ingestion, and parser support before counting it as observed.</small></li>
+              {% endfor %}
+            </ul>
+            {% else %}<p>None</p>{% endif %}
+          </div>
+        </details>
+      </div>
+
+      <details class="telemetry-plugin-edit">
+        <summary>Edit this plugin</summary>
+        <form method="post" action="{{ url_for('telemetry_update_plugin', name=p.name) }}" class="plugin-form">
+          <input type="hidden" name="return_category" value="{{ selected_category }}">
+          <input type="hidden" name="return_search" value="{{ search or '' }}">
+          <label>Name <input name="name" value="{{ p.name }}"></label>
+          <label>Category <input name="category" value="{{ p.category }}"></label>
+          <label>Aliases <textarea name="aliases">{{ p.aliases|join(', ') }}</textarea></label>
+          <label>Observed Components <textarea name="observed_components">{{ p.observed_components|join(', ') }}</textarea></label>
+          <label>Potential Components <textarea name="potential_components">{{ p.potential_components|join(', ') }}</textarea></label>
+          <label>Description <textarea name="description">{{ p.description }}</textarea></label>
+          <label>Confidence <select name="confidence"><option {% if p.confidence=='high' %}selected{% endif %}>high</option><option {% if p.confidence=='medium' %}selected{% endif %}>medium</option><option {% if p.confidence=='low' %}selected{% endif %}>low</option></select></label>
+          <label><input type="checkbox" name="enabled" {% if p.enabled %}checked{% endif %}> Enabled</label>
+          <button>Save plugin</button>
+        </form>
+      </details>
+    </details>
+    {% else %}
+    <p>No plugins match this category or search.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h3>New Plugin</h3>
+  <p class="muted">Create a custom plugin here. Built-in plugins stay central, and custom plugins override a built-in with the same name.</p>
+  <form method="post" action="{{ url_for('telemetry_new_plugin') }}" class="plugin-form">
+    <input type="hidden" name="return_category" value="{{ selected_category }}">
+    <input type="hidden" name="return_search" value="{{ search or '' }}">
+    <label>Name <input name="name" placeholder="Example EDR"></label>
+    <label>Category <input name="category" placeholder="EDR/XDR"></label>
+    <label>Aliases <textarea name="aliases" placeholder="example edr, example sensor, vendor-event"></textarea></label>
+    <label>Observed Components <textarea name="observed_components" placeholder="Process Creation, Network Connection Creation"></textarea></label>
+    <label>Potential Components <textarea name="potential_components" placeholder="Registry Key Modification, File Creation, DNS Query"></textarea></label>
+    <label>Description <textarea name="description" placeholder="What this telemetry plugin detects and why it matters."></textarea></label>
+    <label>Confidence <select name="confidence"><option>high</option><option>medium</option><option>low</option></select></label>
+    <label><input type="checkbox" name="enabled" checked> Enabled</label>
+    <button>Create plugin</button>
+  </form>
+</section>
+
+<section class="card">
+  <h3>Plugin Test Mode</h3>
+  <form method="post">
+    <textarea name="sample_log" rows="6" placeholder="Paste sample log text, source names, event IDs, product banners, or normalized event snippets here.">{{ sample }}</textarea>
+    <button>Test sample</button>
+  </form>
+  {% if test_results %}<h4>Matched Plugins</h4>{% for r in test_results %}<div class="mini-card"><b>{{ r.plugin.name }}</b> <span class="pill telemetry-category-pill">{{ r.plugin.category }}</span><br><small>Aliases: {{ r.matched_aliases|join(', ') }}</small><br><small>Observed: {{ r.plugin.observed_components|join(', ') }}</small></div>{% endfor %}{% elif sample %}<p>No telemetry plugin matched the sample.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h3>Import Plugins</h3>
+  <form method="post" action="{{ url_for('telemetry_import_plugins') }}" enctype="multipart/form-data">
+    <input type="file" name="plugin_file" accept="application/json,.json">
+    <button>Import plugin JSON</button>
+  </form>
+</section>
+
+<section class="card">
+  <h3>Plugin Authoring Guide</h3>
+  <p>A telemetry plugin defines how PCAP Mapper recognizes a product or log source and which ATT&CK-facing telemetry capabilities it contributes.</p>
+  <pre>{
+  "name": "Example EDR",
+  "category": "EDR/XDR",
+  "aliases": ["example edr", "example sensor"],
+  "observed_components": ["Process Creation", "Network Connection Creation"],
+  "potential_components": ["Registry Key Modification", "File Creation", "DNS Query"],
+  "description": "Endpoint telemetry collected by Example EDR.",
+  "confidence": "high",
+  "enabled": true
+}</pre>
+  <p><b>Observed components</b> should be evidence-backed capabilities. <b>Potential components</b> should describe capabilities the product can provide when fully configured. Use aliases that appear in logs, banners, filenames, normalized events, or vendor field names.</p>
+</section>
+{% endblock %}

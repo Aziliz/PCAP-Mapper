@@ -1,0 +1,217 @@
+import os, queue, threading, time, uuid, shutil
+from pathlib import Path
+from app.config import UPLOAD_DIR, RESULT_DIR, REPORT_DIR, EXPORT_DIR, WORKERS, CHECKPOINT_EVERY, SAMPLE_EVENTS, MAX_FINDINGS, VALIDATE_RULES_DURING_ANALYSIS
+from app.utils import capture_sha256, write_json, read_json, validate_capture
+from app.parsers.reader import stream_events
+from app.analysis.aggregator import AnalysisContext
+from app.rules.engine import load_rules, match_event, aggregate_findings, build_validation_results
+from app.plugins.loader import load_plugins, run_plugins
+from app.attack.versioned import add_technique, finalize_techniques
+
+JOB_DB = RESULT_DIR / 'jobs.json'
+CHECKPOINT_DB = RESULT_DIR / 'checkpoints.json'
+Q = queue.Queue()
+STARTED = False
+LOCK = threading.Lock()
+
+def _jobs(): return read_json(JOB_DB, {})
+def _save_jobs(j): write_json(JOB_DB, j)
+def _checkpoints(): return read_json(CHECKPOINT_DB, {})
+def _save_checkpoints(c): write_json(CHECKPOINT_DB, c)
+
+def create_job(files, append_to=None, validate_during_analysis=None):
+    jid = append_to or str(uuid.uuid4())
+    jobs = _jobs()
+    if jid not in jobs:
+        jobs[jid] = {'id': jid, 'state': 'queued', 'files': [], 'created': time.time(), 'progress': 0, 'message': 'Queued'}
+    jobs[jid]['files'].extend([str(f) for f in files])
+    jobs[jid]['state'] = 'queued'
+    jobs[jid]['message'] = 'Queued for analysis'
+    if validate_during_analysis is not None:
+        jobs[jid]['validate_during_analysis'] = bool(validate_during_analysis)
+    jobs[jid]['updated'] = time.time()
+    _save_jobs(jobs)
+    Q.put(jid)
+    return jid
+
+
+def create_empty_job():
+    """Create a new empty current job without deleting previous results."""
+    jid = str(uuid.uuid4())
+    jobs = _jobs()
+    outdir = RESULT_DIR / jid
+    outdir.mkdir(parents=True, exist_ok=True)
+    write_json(outdir / 'result.json', {
+        'summary': {},
+        'hosts': [],
+        'flows': [],
+        'protocols': {},
+        'iocs': {'ips': [], 'domains': [], 'urls': []},
+        'findings': [],
+        'log_sources': [],
+        'techniques': [],
+        'data_source_coverage': [],
+        'enterprise_coverage': {},
+        'rule_validations': {'summary': {}, 'matches': [], 'validated_techniques': []},
+        'validated_techniques': [],
+        'processed_files': [],
+        'skipped_files': [],
+    })
+    now = time.time()
+    jobs[jid] = {
+        'id': jid,
+        'state': 'new',
+        'files': [],
+        'created': now,
+        'updated': now,
+        'progress': 0,
+        'message': 'New empty job ready for PCAP upload',
+        'result_path': str(outdir / 'result.json'),
+        'internal_data_ready': True,
+        'reports_generated': False,
+    }
+    _save_jobs(jobs)
+    return jid
+
+
+def delete_job(jid):
+    """Delete a stored job and its generated artifacts.
+
+    Running jobs are not deleted to avoid removing files while a worker is using
+    them. Previous completed/failed/new jobs can be deleted from the UI.
+    """
+    jobs = _jobs()
+    job = jobs.get(jid)
+    if not job:
+        return False, 'Job not found'
+    if job.get('state') == 'running':
+        return False, 'Cannot delete a running job'
+    jobs.pop(jid, None)
+    _save_jobs(jobs)
+    for base in (RESULT_DIR, REPORT_DIR, EXPORT_DIR):
+        path = base / jid
+        if path.exists():
+            shutil.rmtree(path, ignore_errors=True)
+    return True, 'Deleted'
+
+def list_jobs(): return _jobs()
+def get_job(jid): return _jobs().get(jid)
+
+def _update(jid, **kw):
+    with LOCK:
+        jobs=_jobs(); jobs.setdefault(jid, {'id':jid}); jobs[jid].update(kw); jobs[jid]['updated']=time.time(); _save_jobs(jobs)
+
+def worker_loop(num):
+    while True:
+        jid = Q.get()
+        try: analyze_job(jid)
+        except Exception as e: _update(jid, state='failed', message=str(e))
+        finally: Q.task_done()
+
+def start_workers():
+    global STARTED
+    if STARTED: return
+    STARTED=True
+    for i in range(max(1, WORKERS)):
+        t=threading.Thread(target=worker_loop, args=(i,), daemon=True); t.start()
+
+def analyze_job(jid):
+    jobs=_jobs(); job=jobs.get(jid)
+    if not job: return
+    _update(jid, state='running', progress=0, message='Validating files', packets=0, bytes_read=0, total_bytes=0)
+    ctx=AnalysisContext(); rules=load_rules(); plugins=load_plugins(); cps=_checkpoints(); processed=[]; skipped=[]
+    lightweight_rules = [r for r in rules if r.get('run_during_analysis') or r.get('lightweight')]
+    validate_during_analysis = bool(job.get('validate_during_analysis', VALIDATE_RULES_DURING_ANALYSIS))
+    full_validation_deferred = not validate_during_analysis
+    files=[Path(f) for f in job.get('files',[])]
+    file_count = max(1, len(files))
+    for fi,path in enumerate(files):
+        ok,msg=validate_capture(path)
+        if not ok:
+            skipped.append({'file':str(path),'reason':msg}); continue
+        digest=capture_sha256(path)
+        cp=cps.get(digest, {})
+        if cp.get('complete') and cp.get('result_path') and Path(cp['result_path']).exists():
+            # Incremental skip: merge previous partial result.
+            old=read_json(Path(cp['result_path']), {})
+            for ev in old.get('events_sample',[]): ctx.add_event(ev)
+            skipped.append({'file':str(path),'reason':'already analyzed by sha256 checkpoint'})
+            continue
+        work_dir = RESULT_DIR / jid / digest[:12]; work_dir.mkdir(parents=True, exist_ok=True)
+        sample=[]
+        file_size = path.stat().st_size if path.exists() else 0
+        base_progress = int((fi / file_count) * 90) + 5
+        _update(jid, state='running', message=f'Analyzing {path.name}', current_file=path.name, current_file_index=fi+1, total_files=len(files), current_file_progress=0, current_file_bytes_read=0, current_file_bytes_total=file_size, progress=base_progress)
+        packet_count=0
+        def prog(n, bytes_read=None, bytes_total=None):
+            bytes_total = int(bytes_total or file_size or 0)
+            bytes_read = int(bytes_read or 0)
+            if bytes_total > 0:
+                file_fraction = max(0.0, min(1.0, bytes_read / bytes_total))
+            else:
+                file_fraction = 0.0
+            overall = int(5 + (((fi + file_fraction) / file_count) * 90))
+            current_pct = int(file_fraction * 100)
+            if n and n % CHECKPOINT_EVERY == 0:
+                cps[digest]={'file':str(path),'sha256':digest,'packets':n,'bytes_read':bytes_read,'bytes_total':bytes_total,'complete':False,'updated':time.time()}
+                _save_checkpoints(cps)
+            if bytes_total > 0 or (n and n % 10000 == 0):
+                _update(jid, packets=n, bytes_read=bytes_read, total_bytes=bytes_total, current_file_progress=current_pct, current_file_bytes_read=bytes_read, current_file_bytes_total=bytes_total, progress=overall, message=f'Analyzing {path.name}: {current_pct}% read, {n} packets')
+        for idx, ev in stream_events(path, work_dir, cp, prog):
+            packet_count=idx+1
+            ctx.add_event(ev)
+            if len(sample) < SAMPLE_EVENTS:
+                sample.append(ev)
+            # Performance: do not run the full rule library while Scapy is
+            # streaming packets.  Only explicit lightweight parser-time rules
+            # and plugins run here.  Full Detection/Network Rule validation is
+            # executed later on demand from the UI, or automatically only when
+            # VALIDATE_RULES_DURING_ANALYSIS=1 or the dashboard checkbox is selected.
+            findings = match_event(ev, lightweight_rules) if lightweight_rules else []
+            findings += run_plugins(ev, ctx, plugins)
+            for f in findings:
+                if len(ctx.findings) < MAX_FINDINGS:
+                    ctx.findings.append(f)
+                for tid in f.get('attack',[]): add_technique(ctx, tid, f)
+            if packet_count and packet_count % CHECKPOINT_EVERY == 0:
+                cps[digest]={'file':str(path),'sha256':digest,'packets':packet_count,'complete':False,'updated':time.time()}; _save_checkpoints(cps)
+        partial=work_dir/'partial_result.json'
+        write_json(partial, {'events_sample': sample, 'packet_count': packet_count})
+        cps[digest]={'file':str(path),'sha256':digest,'packets':packet_count,'bytes_read':file_size,'bytes_total':file_size,'complete':True,'result_path':str(partial),'updated':time.time()}; _save_checkpoints(cps)
+        processed.append({'file':str(path),'sha256':digest,'packets':packet_count})
+    # Aggregate rules can be expensive across large flow sets.  Keep them out
+    # of the parse-completion path unless full validation during analysis is
+    # explicitly enabled.
+    if validate_during_analysis:
+        for f in aggregate_findings(ctx, rules):
+            if len(ctx.findings) < MAX_FINDINGS:
+                ctx.findings.append(f)
+            for tid in f.get('attack',[]): add_technique(ctx, tid, f)
+    finalize_techniques(ctx)
+    result=ctx.to_dict(); result['processed_files']=processed; result['skipped_files']=skipped
+    if validate_during_analysis:
+        validations = build_validation_results(result, rules)
+        result['rule_validations'] = validations
+        result['validated_techniques'] = validations.get('validated_techniques', [])
+        result['rule_validation_status'] = 'complete'
+        result['rule_validation_message'] = 'Validated automatically during analysis'
+    else:
+        result['rule_validations'] = {'summary': {}, 'matches': [], 'validated_techniques': []}
+        result['validated_techniques'] = []
+        result['rule_validation_status'] = 'not_run'
+        result['rule_validation_message'] = 'Rule validation deferred; click Validate Rules to run the full rule engine.'
+    outdir=RESULT_DIR/jid; outdir.mkdir(exist_ok=True)
+    write_json(outdir/'result.json', result)
+    # Do not auto-generate downloadable reports here.
+    # Analysis completion now creates only the internal data model used by the UI:
+    # hosts, flows, IOCs, log sources, findings, techniques, and summary statistics.
+    # Downloadable artifacts are rendered on demand from the Reports page.
+    _update(
+        jid,
+        state='complete',
+        progress=100,
+        message='Analysis complete; rule validation and reports are available on demand',
+        result_path=str(outdir/'result.json'),
+        internal_data_ready=True,
+        reports_generated=False,
+    )

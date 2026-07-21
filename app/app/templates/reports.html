@@ -1,0 +1,102 @@
+{% extends 'base.html' %}{% block body %}
+<section class="card"><h2>Reports</h2>
+  <div class="report-job-header">
+    <p class="muted">Generate exports for completed jobs. Detailed descriptions and usage guidance are maintained on the Report Guide page.</p>
+    <a class="btn" href="/reports/guide">Open Report Guide</a>
+  </div>
+{% for id,j in jobs.items() %}
+  <div class="card report-job-card">
+    <div class="report-job-header">
+      <div><b>{{ j.name or id }}</b> <small>{{id}}</small> - {{j.state}}{% if j.reports_generated %} <span class="badge">Reports ready</span>{% else %} <span class="badge muted">Not generated yet</span>{% endif %}</div>
+      <form class="report-generate-form" method="post" action="/reports/{{id}}/generate"><button class="btn" type="submit">Generate/Refresh Reports</button></form>
+    </div>
+
+    <div class="report-sections">
+      <section class="report-section">
+        <h3>HTML / Markdown</h3>
+        <div class="button-row">
+          <a class="btn" href="/download/{{id}}/report/report.html">HTML Report</a>
+          <a class="btn" href="/download/{{id}}/report/report.md">Markdown Report</a>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <h3>CSV / NDJSON</h3>
+        <div class="button-row">
+          <a class="btn" href="/download/{{id}}/report/hosts.csv">Hosts CSV</a>
+          <a class="btn" href="/download/{{id}}/report/flows.csv">Flows CSV</a>
+          <a class="btn" href="/download/{{id}}/report/normalized_events.csv">Events CSV</a>
+          <a class="btn" href="/download/{{id}}/export/elastic_bulk.ndjson">Elastic NDJSON</a>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <h3>MITRE ATT&CK / Navigator</h3>
+        <div class="button-row">
+          <a class="btn" href="/download/{{id}}/export/mitre_navigator_layer.json">Observed Navigator Layer</a>
+          <a class="btn" href="/download/{{id}}/export/mitre_unified_coverage_layer.json">Unified Coverage Navigator Layer</a>
+          <a class="btn" href="/download/{{id}}/export/mitre_data_source_coverage_layer.json">Theoretical Coverage Navigator Layer</a>
+        </div>
+      </section>
+
+      <section class="report-section">
+        <h3>Other Reports</h3>
+        <div class="button-row">
+          <a class="btn" href="/download/{{id}}/report/enterprise_attack_coverage.json">Enterprise Coverage JSON</a>
+          <a class="btn" href="/download/{{id}}/report/enterprise_attack_coverage_model.json">Unified ATT&CK Coverage Model JSON</a>
+          <a class="btn" href="/download/{{id}}/report/event_diagnostics.json">Event Diagnostics JSON</a>
+          <a class="btn" href="/download/{{id}}/report/rule_validation_results.json">Rule Validation JSON</a>
+          <a class="btn" href="/download/{{id}}/report/potential_attack_coverage.pdf">Potential Coverage PDF</a>
+          <a class="btn" href="/download/{{id}}/report/potential_attack_coverage.html">Potential Coverage HTML</a>
+          <a class="btn" href="/download/{{id}}/report/potential_attack_coverage.json">Potential Coverage JSON</a>
+        </div>
+      </section>
+    </div>
+  </div>
+{% else %}<p>No reports yet.</p>{% endfor %}
+
+<div id="reportProgressModal" class="progress-modal" style="display:none">
+  <div class="progress-modal-card">
+    <h3>Generating reports</h3>
+    <p id="reportProgressText" class="muted">Preparing report generation...</p>
+    <div class="bar"><div id="reportProgressBar" style="width:0%"></div></div>
+    <ol class="progress-steps" id="reportProgressSteps">
+      <li>Loading job results</li>
+      <li>Refreshing coverage cache</li>
+      <li>Building HTML / Markdown</li>
+      <li>Writing CSV / JSON</li>
+      <li>Generating Navigator exports</li>
+      <li>Finalizing reports</li>
+    </ol>
+  </div>
+</div>
+</section>{% endblock %}
+
+{% block scripts %}
+<script>
+(function(){
+  const forms=[...document.querySelectorAll('.report-generate-form')];
+  const modal=document.getElementById('reportProgressModal');
+  const bar=document.getElementById('reportProgressBar');
+  const text=document.getElementById('reportProgressText');
+  const steps=[...document.querySelectorAll('#reportProgressSteps li')];
+  forms.forEach(form=>{
+    form.addEventListener('submit',()=>{
+      if(!modal) return;
+      modal.style.display='flex';
+      form.querySelectorAll('button').forEach(b=>{b.disabled=true;b.textContent='Generating...';});
+      let i=0;
+      function tick(){
+        const pct=Math.min(95, 8 + i*17);
+        if(bar) bar.style.width=pct+'%';
+        steps.forEach((s,idx)=>s.classList.toggle('active', idx===Math.min(i,steps.length-1)));
+        if(text) text.textContent=steps[Math.min(i,steps.length-1)]?.textContent || 'Working...';
+        i=Math.min(i+1, steps.length-1);
+        setTimeout(tick, 700);
+      }
+      tick();
+    });
+  });
+})();
+</script>
+{% endblock %}

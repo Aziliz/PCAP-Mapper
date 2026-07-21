@@ -1,0 +1,510 @@
+body{font-family:Arial,sans-serif;margin:0;background:#f5f7fb;color:#17202a}header{display:flex;align-items:center;gap:20px;padding:14px 24px;background:#13233a;color:white;position:sticky;top:0}nav a{color:white;margin-right:14px;text-decoration:none}button{padding:8px 12px;border:0;border-radius:6px;background:#2962ff;color:white}main{padding:24px}.card{background:white;border-radius:12px;padding:18px;margin:14px 0;box-shadow:0 2px 10px #0001}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}table{border-collapse:collapse;width:100%;font-size:14px}th,td{padding:8px;border-bottom:1px solid #ddd;text-align:left}.bar{height:24px;background:#ddd;border-radius:20px;overflow:hidden}.bar div{height:100%;background:#2962ff}.heat{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.box{padding:14px;border-radius:10px;background:#fee08b;border:1px solid #e5c75c}.rule{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px}input,select{padding:8px;border:1px solid #bbb;border-radius:6px}body.dark{background:#111827;color:#e5e7eb}body.dark .card{background:#1f2937}body.dark table td,body.dark table th{border-color:#374151}body.dark header{background:#030712}svg{border:1px solid #ddd;border-radius:8px;background:#fff}body.dark svg{background:#111827;border-color:#374151}
+
+.button-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}.btn{display:inline-block;padding:9px 12px;border-radius:7px;background:#2962ff;color:white;text-decoration:none;font-weight:600}.btn:hover{filter:brightness(.92)}.box.coverage{background:#d8f3e7;border-color:#94d3b4}.box.observed{background:#fee08b;border-color:#e5c75c}body.dark .btn{background:#3b82f6;color:white}body.dark .box.coverage{background:#14532d;border-color:#22c55e}body.dark .box.observed{background:#78350f;border-color:#f59e0b}
+
+.finding-link{display:block;padding:.65rem .75rem;margin:.45rem 0;border:1px solid var(--border,#d0d7de);border-radius:8px;text-decoration:none;color:inherit;background:rgba(127,127,127,.06)}
+.finding-link:hover{background:rgba(127,127,127,.14);transform:translateY(-1px)}
+.highlight-flow{outline:2px solid #f59e0b;background:rgba(245,158,11,.18)!important}
+.muted{opacity:.75;font-size:.92rem}
+.bar{width:100%;height:18px;background:#ddd;border-radius:10px;overflow:hidden;margin:8px 0 14px 0}.bar>div{height:100%;background:#3578e5;transition:width .3s ease}.dark .bar{background:#333}.dark .bar>div{background:#64a2ff}
+
+/* Dark mode readability pass: CSS-only change */
+body.dark{
+  background:#0b1020;
+  color:#e8edf7;
+}
+body.dark header{
+  background:#111827;
+  border-bottom:1px solid #2b3648;
+  box-shadow:0 2px 14px rgba(0,0,0,.35);
+}
+body.dark nav a{
+  color:#dbeafe;
+}
+body.dark nav a:hover{
+  color:#ffffff;
+  text-decoration:underline;
+}
+body.dark main{
+  background:#0b1020;
+}
+body.dark .card{
+  background:#172033;
+  color:#e8edf7;
+  border:1px solid #2d3a52;
+  box-shadow:0 6px 18px rgba(0,0,0,.28);
+}
+body.dark .card h1,
+body.dark .card h2,
+body.dark .card h3,
+body.dark h1,
+body.dark h2,
+body.dark h3{
+  color:#f8fafc;
+}
+body.dark p,
+body.dark li,
+body.dark td,
+body.dark th,
+body.dark label{
+  color:#e8edf7;
+}
+body.dark small,
+body.dark .muted{
+  color:#b8c4d8;
+  opacity:1;
+}
+body.dark table{
+  background:#172033;
+  color:#e8edf7;
+}
+body.dark th{
+  background:#202c44;
+  color:#ffffff;
+  border-bottom:1px solid #3d4d68;
+}
+body.dark td{
+  border-bottom:1px solid #2d3a52;
+}
+body.dark tr:nth-child(even) td{
+  background:#1b263b;
+}
+body.dark tr:hover td{
+  background:#263653;
+}
+body.dark input,
+body.dark select,
+body.dark textarea{
+  background:#0f172a;
+  color:#f8fafc;
+  border:1px solid #52627c;
+}
+body.dark input::placeholder,
+body.dark textarea::placeholder{
+  color:#94a3b8;
+}
+body.dark button,
+body.dark .btn{
+  background:#60a5fa;
+  color:#07111f;
+  font-weight:700;
+  border:1px solid #93c5fd;
+}
+body.dark button:hover,
+body.dark .btn:hover{
+  background:#93c5fd;
+  filter:none;
+}
+body.dark a{
+  color:#93c5fd;
+}
+body.dark a:hover{
+  color:#bfdbfe;
+}
+body.dark .finding-link{
+  background:#111c31;
+  border-color:#3d4d68;
+  color:#e8edf7;
+}
+body.dark .finding-link:hover{
+  background:#20304b;
+  border-color:#60a5fa;
+}
+body.dark .highlight-flow{
+  outline:2px solid #fbbf24;
+  background:rgba(251,191,36,.22)!important;
+}
+body.dark .bar{
+  background:#283549;
+  border:1px solid #3d4d68;
+}
+body.dark .bar>div{
+  background:#60a5fa;
+}
+body.dark svg{
+  background:#101827;
+  border-color:#3d4d68;
+}
+body.dark .box{
+  color:#f8fafc;
+  background:#4a3412;
+  border-color:#d97706;
+}
+body.dark .box.coverage{
+  background:#123828;
+  border-color:#34d399;
+}
+body.dark .box.observed{
+  background:#4a3412;
+  border-color:#f59e0b;
+}
+body.dark pre,
+body.dark code{
+  background:#0f172a;
+  color:#e8edf7;
+  border:1px solid #2d3a52;
+  border-radius:6px;
+}
+
+.pill{display:inline-block;padding:4px 8px;border-radius:999px;background:#e7efff;color:#173b7a;margin:3px;font-size:.85rem;border:1px solid #bcd0ff}body.dark .pill{background:#1e3a5f;color:#dbeafe;border-color:#3b82f6}
+
+
+/* ATT&CK heat map clarity */
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.legend-item{display:inline-block;padding:6px 10px;border-radius:999px;border:1px solid #9ca3af;font-weight:700;font-size:.9rem}.legend-item.validated,.box.validated{background:#7c3aed;color:white;border-color:#5b21b6}.legend-item.observed,.box.observed{background:#dbeafe;color:#1e3a8a;border-color:#60a5fa}.legend-item.covered,.box.coverage{background:#dcfce7;color:#14532d;border-color:#22c55e}.legend-item.partial,.box.partial{background:#fef3c7;color:#78350f;border-color:#f59e0b}.legend-item.missing,.box.missing{background:#f3f4f6;color:#374151;border-color:#9ca3af}.box.validated,.box.observed,.box.coverage,.box.partial,.box.missing{border-width:2px}.box.validated small{color:#ede9fe}.box.observed small{color:#1d4ed8}.box.coverage small{color:#166534}.box.partial small{color:#92400e}
+body.dark .legend-item.validated,body.dark .box.validated{background:#4c1d95;color:#f5f3ff;border-color:#a78bfa}body.dark .legend-item.observed,body.dark .box.observed{background:#172554;color:#dbeafe;border-color:#60a5fa}body.dark .legend-item.covered,body.dark .box.coverage{background:#14532d;color:#dcfce7;border-color:#4ade80}body.dark .legend-item.partial,body.dark .box.partial{background:#78350f;color:#fef3c7;border-color:#fbbf24}body.dark .legend-item.missing,body.dark .box.missing{background:#1f2937;color:#d1d5db;border-color:#6b7280}body.dark .box.validated small{color:#ddd6fe}body.dark .box.observed small{color:#bfdbfe}body.dark .box.coverage small{color:#bbf7d0}body.dark .box.partial small{color:#fde68a}
+.alert{background:#fee2e2;color:#7f1d1d;border:1px solid #fca5a5;border-radius:10px;padding:10px 12px;margin:10px 0}body.dark .alert{background:#450a0a;color:#fecaca;border-color:#ef4444}
+
+/* Communications page enhancements only */
+.comm-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:12px}
+.comm-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.9fr);gap:14px;align-items:start}
+.comm-table-card{overflow:auto;max-height:70vh}.comm-detail-card{position:sticky;top:82px;max-height:78vh;overflow:auto}.detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(145px,1fr));gap:10px;margin:12px 0}.detail-grid>div{padding:9px;border:1px solid #d7dce5;border-radius:8px;background:#f8fafc}.mini-card{padding:10px;border:1px solid #d7dce5;border-radius:8px;background:#f8fafc;margin:8px 0}.timeline{padding-left:22px}.selected-flow td{background:#dbeafe!important}.link-button{display:block;width:100%;text-align:left;margin:6px 0;background:#eef4ff;color:#173b7a;border:1px solid #bcd0ff}.flow-select{transform:scale(1.1)}
+@media(max-width:900px){.comm-layout{grid-template-columns:1fr}.comm-detail-card{position:static;max-height:none}}
+body.dark .detail-grid>div,body.dark .mini-card{background:#111c31;border-color:#3d4d68;color:#e8edf7}body.dark .selected-flow td{background:#1e3a5f!important}body.dark .link-button{background:#1e3a5f;color:#dbeafe;border-color:#3b82f6}
+
+/* Log Sources page enhancements only */
+.log-overview{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:12px 0}.big-number{font-size:1.35rem;font-weight:800}.pill-row{margin-top:10px}.log-filters{display:grid;grid-template-columns:minmax(220px,1fr) minmax(150px,.35fr) minmax(150px,.35fr) auto auto;gap:8px;align-items:center;margin-top:12px}.log-layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(320px,.85fr);gap:14px;align-items:start}.log-table-card{overflow:auto;max-height:68vh}.log-detail-card{position:sticky;top:82px;max-height:78vh;overflow:auto}#logTable tbody tr{cursor:pointer}#logTable tbody tr:hover td{background:#eef4ff}@media(max-width:900px){.log-layout{grid-template-columns:1fr}.log-detail-card{position:static;max-height:none}.log-filters{grid-template-columns:1fr}}
+body.dark #logTable tbody tr:hover td{background:#20304b}
+
+/* v1.0 minimal utilities */
+.row-between{display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.inline-form{display:inline;margin:0}
+.inline-form button{white-space:nowrap}
+
+/* v2 Phase 3 normalized event UI */
+.event-filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px;align-items:center;margin:10px 0}
+.event-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(320px,.8fr);gap:14px;align-items:start}
+.event-table-card{overflow:auto;max-height:70vh}.event-detail-card{position:sticky;top:82px;max-height:78vh;overflow:auto}
+#eventTable tbody tr{cursor:pointer}#eventTable tbody tr:hover td{background:#eef4ff}
+body.dark #eventTable tbody tr:hover td{background:#20304b}
+@media(max-width:900px){.event-layout{grid-template-columns:1fr}.event-detail-card{position:static;max-height:none}}
+
+/* v2 scoped MITRE heat map states */
+.legend-item.notapp,.box.notapp{background:#9ca3af;color:#111827;border-color:#6b7280}.box.notapp small{color:#111827}.box.missing small{color:#4b5563}.box.notapp{opacity:.85}body.dark .legend-item.notapp,body.dark .box.notapp{background:#4b5563;color:#f3f4f6;border-color:#9ca3af}body.dark .box.notapp small{color:#e5e7eb}body.dark .box.missing small{color:#d1d5db}
+
+
+/* v2 detectable ATT&CK state */
+.legend-item.detectable,.box.detectable{background:#fed7aa;color:#7c2d12;border-color:#fb923c}
+.box.detectable{border-width:2px}
+.box.detectable small{color:#9a3412}
+body.dark .legend-item.detectable,body.dark .box.detectable{background:#7c2d12;color:#ffedd5;border-color:#fb923c}
+body.dark .box.detectable small{color:#fed7aa}
+
+/* v2 MITRE page dropdown sections and overlay stacking fix */
+header{z-index:1000}
+.mitre-dropdown{margin:14px 0;border:1px solid #d7dce5;border-radius:12px;background:#fff;overflow:visible;position:relative;z-index:0}
+.mitre-dropdown>summary{cursor:pointer;padding:14px 16px;font-weight:800;font-size:1.1rem;list-style:none;background:#eef4ff;color:#173b7a;border-radius:12px}
+.mitre-dropdown>summary::-webkit-details-marker{display:none}
+.mitre-dropdown>summary:after{content:'▾';float:right}
+.mitre-dropdown:not([open])>summary:after{content:'▸'}
+.mitre-dropdown[open]>summary{border-bottom:1px solid #d7dce5;border-radius:12px 12px 0 0}
+.mitre-dropdown>.card{margin:12px}
+.mitre-page,.mitre-overlay-section,.mitre-overlay-heat,.mitre-overlay-heat .box{position:relative;z-index:0}
+body.dark .mitre-dropdown{background:#1f2937;border-color:#374151}
+body.dark .mitre-dropdown>summary{background:#1e3a5f;color:#dbeafe;border-color:#3b82f6}
+body.dark .mitre-dropdown[open]>summary{border-bottom-color:#374151}
+
+/* v2 staged upload/decompress/parse/validation progress and job rename */
+.stage-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:12px 0}.stage-grid>div{padding:10px;border:1px solid #d7dce5;border-radius:10px;background:rgba(127,127,127,.05)}.stage-grid b{display:block;margin-bottom:4px}.bar.small{height:12px;margin:6px 0 0}.rename-form{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.rename-form input{min-width:160px}body.dark .stage-grid>div{border-color:#374151;background:#111827}
+
+/* v2 report guide and MITRE navigation/pages */
+.nav-dropdown{position:relative;display:inline-block;z-index:1100;padding-bottom:8px;margin-bottom:-8px}.nav-dropbtn{background:transparent;color:inherit;border:0;padding:0 8px;font:inherit;cursor:pointer}.nav-dropdown-content{display:none;position:absolute;top:calc(100% - 1px);left:0;background:#fff;min-width:210px;border:1px solid #d7dce5;border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,.18);z-index:1200;overflow:hidden}.nav-dropdown-content a{display:block;padding:10px 12px;white-space:nowrap}.nav-dropdown:hover .nav-dropdown-content,.nav-dropdown:focus-within .nav-dropdown-content{display:block}body.dark .nav-dropdown-content{background:#172033;border-color:#2d3a52}.mitre-subnav{margin:8px 0 14px 0}.overlay-toggles{display:flex;flex-wrap:wrap;gap:10px;margin:10px 0 14px}.overlay-toggles label{padding:6px 10px;border:1px solid #d7dce5;border-radius:999px;background:#f8fafc}.na-reason{margin-top:8px;padding-top:8px;border-top:1px solid rgba(0,0,0,.2);font-size:.82rem;font-weight:700}.report-guide>summary{cursor:pointer;display:inline-block;margin-bottom:12px}.report-guide[open]>summary{margin-bottom:8px}body.dark .overlay-toggles label{background:#111827;border-color:#374151}.mitre-overlay-section{overflow:visible}.mitre-overlay-heat{z-index:0}.mitre-overlay-heat .box{z-index:0}
+
+
+/* v2 nav/report refinements */
+.nav-text-dropdown{display:inline-block;vertical-align:baseline;margin-right:14px}
+.nav-droptext{color:white;text-decoration:none;cursor:pointer;font:inherit;line-height:1.4;padding:0;background:transparent;border:0}
+.nav-droptext:hover{text-decoration:underline}
+.nav-droptext:focus{outline:1px solid rgba(255,255,255,.55);outline-offset:3px;border-radius:3px}
+.nav-text-dropdown .nav-dropdown-content{margin-top:0}
+.nav-text-dropdown .nav-dropdown-content a{color:#17202a;margin-right:0;text-decoration:none}
+.nav-text-dropdown .nav-dropdown-content a:hover{background:#eef4ff}
+body.dark .nav-text-dropdown .nav-dropdown-content a{color:#e5e7eb}
+body.dark .nav-text-dropdown .nav-dropdown-content a:hover{background:#253247}
+.report-job-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.report-sections{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;margin-top:12px}
+.report-section{border:1px solid #d7dce5;border-radius:10px;padding:14px;background:#f8fafc}
+.report-section h3{margin-top:0;margin-bottom:6px}
+body.dark .report-section{background:#111827;border-color:#374151}
+
+
+/* v2 MITRE report/heat-map color scheme override */
+.legend-item.validated,.box.validated{background:#16a34a!important;color:#ffffff!important;border-color:#15803d!important}
+.legend-item.observed,.box.observed{background:#ef4444!important;color:#ffffff!important;border-color:#b91c1c!important}
+.legend-item.covered,.box.coverage{background:#2563eb!important;color:#ffffff!important;border-color:#1d4ed8!important}
+.legend-item.partial,.box.partial{background:#f59e0b!important;color:#111827!important;border-color:#d97706!important}
+.legend-item.missing,.box.missing{background:#374151!important;color:#f9fafb!important;border-color:#111827!important}
+.legend-item.notapp,.box.notapp{background:#6b7280!important;color:#f9fafb!important;border-color:#4b5563!important}
+.legend-item.detectable,.box.detectable{background:#fb923c!important;color:#111827!important;border-color:#ea580c!important}
+.box.validated small,.box.observed small,.box.coverage small,.box.missing small,.box.notapp small{color:#f3f4f6!important}
+.box.partial small,.box.detectable small{color:#111827!important}
+body.dark .legend-item.validated,body.dark .box.validated{background:#15803d!important;color:#dcfce7!important;border-color:#22c55e!important}
+body.dark .legend-item.observed,body.dark .box.observed{background:#991b1b!important;color:#fee2e2!important;border-color:#ef4444!important}
+body.dark .legend-item.covered,body.dark .box.coverage{background:#1e40af!important;color:#dbeafe!important;border-color:#60a5fa!important}
+body.dark .legend-item.missing,body.dark .box.missing{background:#374151!important;color:#f9fafb!important;border-color:#6b7280!important}
+body.dark .legend-item.notapp,body.dark .box.notapp{background:#4b5563!important;color:#f3f4f6!important;border-color:#9ca3af!important}
+
+.legend-item.external,.box.external{background:#64748b!important;color:#f8fafc!important;border-color:#475569!important}
+.box.external small{color:#f1f5f9!important}
+body.dark .legend-item.external,body.dark .box.external{background:#334155!important;color:#f8fafc!important;border-color:#94a3b8!important}
+
+/* v2 MITRE responsiveness and analysis workspace enhancements */
+.progress-modal{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;align-items:center;justify-content:center;padding:24px}
+.progress-modal-card{width:min(620px,94vw);background:#fff;color:#17202a;border-radius:14px;padding:22px;box-shadow:0 20px 50px rgba(0,0,0,.35)}
+body.dark .progress-modal-card{background:#111827;color:#e5e7eb;border:1px solid #374151}
+.progress-steps{margin:12px 0 0 1.2rem;padding:0;columns:2}.progress-steps li{margin:4px 0;color:#6b7280}.progress-steps li.active{font-weight:700;color:#2962ff}body.dark .progress-steps li.active{color:#93c5fd}
+.mitre-controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin:12px 0}.mitre-controls label{display:flex;flex-direction:column;gap:4px;min-width:180px}.mitre-controls input,.mitre-controls select{min-width:180px}
+.technique-panel{position:fixed;top:0;right:-430px;width:min(390px,92vw);height:100vh;background:#fff;color:#17202a;box-shadow:-12px 0 30px rgba(0,0,0,.28);z-index:4500;padding:24px;transition:right .22s ease;overflow:auto}.technique-panel.open{right:0}body.dark .technique-panel{background:#111827;color:#e5e7eb;border-left:1px solid #374151}.panel-close{float:right;background:#374151;color:#fff;border-radius:999px;width:34px;height:34px;padding:0;font-size:1.4rem;line-height:1}
+.overlay-card{cursor:pointer}.overlay-card:focus{outline:3px solid #60a5fa;outline-offset:2px}.bar.small{height:10px;margin:8px 0}.mitre-overlay-heat{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+
+
+/* v2 active job header selector */
+.active-job-picker{display:flex;align-items:center;gap:8px;margin-left:0;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);border-radius:10px;padding:6px 8px}
+.active-job-picker form{display:flex;align-items:center;gap:8px;margin:0}.active-job-picker label{color:white;font-size:.86rem;font-weight:700}.active-job-picker select{max-width:260px;padding:6px 8px}.active-job-picker button{padding:6px 9px;background:#e0ecff;color:#0f172a;border:1px solid #bfdbfe}
+header nav{display:flex;align-items:center;gap:0;flex-wrap:wrap}.dark .active-job-picker{background:rgba(96,165,250,.12);border-color:rgba(147,197,253,.35)}
+@media(max-width:1100px){header{flex-wrap:wrap}.active-job-picker{order:2;margin-left:0;width:100%}.active-job-picker select{max-width:70vw}header nav{order:3}}
+
+
+/* v2 upload fix / header alignment */
+.app-header{display:flex;align-items:center;gap:20px}
+.app-header h1{flex:0 0 auto}
+.app-header .main-nav{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin-right:auto}
+.header-actions{margin-left:auto;display:flex;align-items:center;gap:10px}
+.header-actions #dark{flex:0 0 auto}
+.header-actions .active-job-picker{margin-left:0}
+@media(max-width:1100px){.app-header{flex-wrap:wrap}.app-header .main-nav{order:2;width:100%}.header-actions{order:3;margin-left:0;width:100%;justify-content:flex-end}.active-job-picker select{max-width:65vw}}
+
+/* v2 event details refinement */
+.event-filters .btn, .event-filters button.btn {
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  font-size:14px;
+  line-height:1.2;
+  min-height:36px;
+  box-sizing:border-box;
+}
+.event-detail-btn{font-size:14px;line-height:1.2;cursor:pointer}
+.job-control-actions{display:flex;gap:.5rem;align-items:center;margin:.5rem 0 1rem 0;flex-wrap:wrap}
+.job-control-actions form{display:inline-block;margin:0}
+button.danger{border-color:#b91c1c;color:#b91c1c}
+button.danger:hover{background:#fee2e2}
+
+.observed-full-event{margin-top:10px}.observed-full-event pre{max-height:320px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:rgba(127,127,127,.12);border:1px solid rgba(127,127,127,.25);border-radius:8px;padding:10px;font-size:12px;line-height:1.35}
+
+.report-guide-search-card { position: sticky; top: 0.5rem; z-index: 2; }
+.report-guide-search { width: 100%; max-width: 720px; margin-top: 0.5rem; padding: 0.6rem 0.75rem; border-radius: 8px; border: 1px solid var(--border, #3a4454); font-size: 1rem; }
+
+.settings-section{border-top:1px solid var(--border,#334);padding-top:1rem;margin-top:1rem}.secondary{opacity:.85}.stage-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));}
+
+/* Pipeline progress layout: 12 equal cards in two rows of six. */
+.pipeline-grid{
+  display:grid;
+  grid-template-columns:repeat(6, minmax(0, 1fr));
+  gap:12px;
+  width:100%;
+  align-items:stretch;
+}
+.pipeline-grid .stage-card{
+  min-width:0;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  gap:6px;
+}
+.pipeline-grid .stage-card b{
+  min-height:2.4em;
+  display:block;
+}
+@media (max-width: 1100px){.pipeline-grid{grid-template-columns:repeat(3, minmax(0, 1fr));}}
+@media (max-width: 700px){.pipeline-grid{grid-template-columns:repeat(2, minmax(0, 1fr));}}
+
+.stage-pct{font-weight:700;white-space:nowrap;display:inline-block;}
+.plugin-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:start}.plugin-form label{display:flex;flex-direction:column;gap:4px}.plugin-form textarea{min-height:70px}.filter-row{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.banner{padding:10px 12px;border-radius:8px;background:#174b75;margin:8px 0}.btn{display:inline-block;padding:8px 12px;border-radius:6px;background:#29445f;color:inherit;text-decoration:none}
+
+/* Telemetry plugin registry cards */
+.telemetry-plugin-list{display:flex;flex-direction:column;gap:12px;margin-top:12px}
+.telemetry-plugin-card{border:1px solid rgba(148,163,184,.25);border-radius:10px;padding:0;background:rgba(15,23,42,.18);overflow:hidden}
+.telemetry-plugin-card[open]{background:rgba(15,23,42,.28)}
+.telemetry-plugin-summary{display:flex;justify-content:space-between;gap:16px;align-items:center;cursor:pointer;padding:12px 14px;list-style:none}
+.telemetry-plugin-summary::-webkit-details-marker{display:none}
+.telemetry-plugin-summary:before{content:'▸';margin-right:6px;opacity:.75}
+.telemetry-plugin-card[open]>.telemetry-plugin-summary:before{content:'▾'}
+.telemetry-plugin-main{display:flex;flex-direction:column;gap:3px;min-width:240px}
+.telemetry-plugin-main small{opacity:.78;line-height:1.3}
+.telemetry-plugin-meta{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.telemetry-plugin-detail-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;padding:0 14px 12px}
+.telemetry-plugin-detail-grid p{margin:.4rem 0 0;line-height:1.35;word-break:break-word}
+.telemetry-plugin-actions{display:flex;gap:8px;flex-wrap:wrap;padding:0 14px 12px}
+.telemetry-plugin-actions form{display:inline-block;margin:0}
+.telemetry-plugin-edit{margin:0 14px 14px;padding:10px;border:1px dashed rgba(148,163,184,.35);border-radius:8px}
+.telemetry-plugin-edit>summary{cursor:pointer;font-weight:600;margin-bottom:8px}
+.telemetry-filter-row{justify-content:space-between}
+.pill.ok{background:#14532d;color:#dcfce7}
+.pill.muted{opacity:.75}
+
+/* Telemetry plugin card alignment, actions, and category colors */
+.telemetry-plugin-summary{
+  display:grid;
+  grid-template-columns:minmax(260px,1.15fr) minmax(280px,1fr) auto;
+  gap:14px;
+  align-items:center;
+}
+.telemetry-plugin-summary:before{grid-column:1;grid-row:1;align-self:center;justify-self:start}
+.telemetry-plugin-main{
+  grid-column:1;
+  text-align:left;
+  align-items:flex-start;
+  padding-left:22px;
+}
+.telemetry-plugin-main b,.telemetry-plugin-main small{text-align:left;display:block}
+.telemetry-plugin-meta{grid-column:2;justify-content:flex-start;align-items:center}
+.telemetry-plugin-summary-actions{grid-column:3;display:flex;gap:8px;justify-content:flex-end;align-items:center;white-space:nowrap;margin-left:auto}
+.telemetry-plugin-summary-actions form{display:inline-flex;margin:0}.telemetry-plugin-summary-actions button{white-space:nowrap}
+.telemetry-plugin-edit{background:rgba(0,0,0,.03)}
+.telemetry-plugin-edit>summary{background:#111827;color:#f9fafb;border-radius:8px;padding:10px 12px;margin:-2px -2px 10px -2px}
+.telemetry-plugin-edit[open]>summary{border-radius:8px 8px 0 0}.telemetry-plugin-edit>summary:hover{background:#1f2937}
+.telemetry-plugin-card{border-left:8px solid #a78bfa}.telemetry-category-pill{background:#ede9fe;color:#4c1d95;border-color:#c4b5fd;font-weight:800}
+.telemetry-plugin-card[data-category="Cloud"]{border-left-color:#d1d5db}.telemetry-plugin-card[data-category="Cloud"] .telemetry-category-pill{background:#e5e7eb;color:#374151;border-color:#cbd5e1}
+.telemetry-plugin-card[data-category="Windows"],.telemetry-plugin-card[data-category="Windows Server"]{border-left-color:#60a5fa}.telemetry-plugin-card[data-category="Windows"] .telemetry-category-pill,.telemetry-plugin-card[data-category="Windows Server"] .telemetry-category-pill{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd}
+.telemetry-plugin-card[data-category="Linux"]{border-left-color:#f59e0b}.telemetry-plugin-card[data-category="Linux"] .telemetry-category-pill{background:#fef3c7;color:#78350f;border-color:#fbbf24}
+.telemetry-plugin-card[data-category="macOS"]{border-left-color:#a78bfa}.telemetry-plugin-card[data-category="macOS"] .telemetry-category-pill{background:#ede9fe;color:#4c1d95;border-color:#c4b5fd}
+.telemetry-plugin-card[data-category="Network"]{border-left-color:#14b8a6}.telemetry-plugin-card[data-category="Network"] .telemetry-category-pill{background:#ccfbf1;color:#134e4a;border-color:#5eead4}
+.telemetry-plugin-card[data-category="Firewall"]{border-left-color:#fb7185}.telemetry-plugin-card[data-category="Firewall"] .telemetry-category-pill{background:#ffe4e6;color:#881337;border-color:#fda4af}
+.telemetry-plugin-card[data-category="DNS/DHCP"]{border-left-color:#38bdf8}.telemetry-plugin-card[data-category="DNS/DHCP"] .telemetry-category-pill{background:#e0f2fe;color:#075985;border-color:#7dd3fc}
+.telemetry-plugin-card[data-category="VPN"]{border-left-color:#22c55e}.telemetry-plugin-card[data-category="VPN"] .telemetry-category-pill{background:#dcfce7;color:#14532d;border-color:#86efac}
+.telemetry-plugin-card[data-category="Identity"]{border-left-color:#818cf8}.telemetry-plugin-card[data-category="Identity"] .telemetry-category-pill{background:#e0e7ff;color:#312e81;border-color:#a5b4fc}
+.telemetry-plugin-card[data-category="Email"]{border-left-color:#f472b6}.telemetry-plugin-card[data-category="Email"] .telemetry-category-pill{background:#fce7f3;color:#831843;border-color:#f9a8d4}
+.telemetry-plugin-card[data-category="SaaS"]{border-left-color:#2dd4bf}.telemetry-plugin-card[data-category="SaaS"] .telemetry-category-pill{background:#ccfbf1;color:#115e59;border-color:#99f6e4}
+.telemetry-plugin-card[data-category="EDR/XDR"],.telemetry-plugin-card[data-category="Endpoint"]{border-left-color:#34d399}.telemetry-plugin-card[data-category="EDR/XDR"] .telemetry-category-pill,.telemetry-plugin-card[data-category="Endpoint"] .telemetry-category-pill{background:#d1fae5;color:#065f46;border-color:#6ee7b7}
+.telemetry-plugin-card[data-category="SIEM"]{border-left-color:#c084fc}.telemetry-plugin-card[data-category="SIEM"] .telemetry-category-pill{background:#f3e8ff;color:#581c87;border-color:#d8b4fe}
+.telemetry-plugin-card[data-category="Container"]{border-left-color:#06b6d4}.telemetry-plugin-card[data-category="Container"] .telemetry-category-pill{background:#cffafe;color:#164e63;border-color:#67e8f9}
+.telemetry-plugin-card[data-category="Virtualization"]{border-left-color:#a3e635}.telemetry-plugin-card[data-category="Virtualization"] .telemetry-category-pill{background:#ecfccb;color:#365314;border-color:#bef264}
+.telemetry-plugin-card[data-category="Storage"]{border-left-color:#facc15}.telemetry-plugin-card[data-category="Storage"] .telemetry-category-pill{background:#fef9c3;color:#713f12;border-color:#fde047}
+.telemetry-plugin-card[data-category="DevOps"]{border-left-color:#fb923c}.telemetry-plugin-card[data-category="DevOps"] .telemetry-category-pill{background:#ffedd5;color:#7c2d12;border-color:#fdba74}
+.telemetry-plugin-card[data-category="Database"]{border-left-color:#4ade80}.telemetry-plugin-card[data-category="Database"] .telemetry-category-pill{background:#dcfce7;color:#166534;border-color:#86efac}
+.telemetry-plugin-card[data-category="OT/ICS"]{border-left-color:#f87171}.telemetry-plugin-card[data-category="OT/ICS"] .telemetry-category-pill{background:#fee2e2;color:#7f1d1d;border-color:#fca5a5}
+.telemetry-plugin-card[data-category="Web"]{border-left-color:#7dd3fc}.telemetry-plugin-card[data-category="Web"] .telemetry-category-pill{background:#e0f2fe;color:#075985;border-color:#bae6fd}
+body.dark .telemetry-plugin-card{background:#111827}body.dark .telemetry-plugin-main small{color:#cbd5e1}body.dark .telemetry-plugin-edit{background:#0f172a;border-color:#475569}body.dark .telemetry-plugin-edit>summary{background:#020617;color:#f8fafc;border:1px solid #475569}
+@media(max-width:980px){.telemetry-plugin-summary{grid-template-columns:1fr}.telemetry-plugin-main,.telemetry-plugin-meta,.telemetry-plugin-summary-actions{grid-column:1}.telemetry-plugin-summary-actions{justify-content:flex-start;margin-left:22px;flex-wrap:wrap}.telemetry-plugin-meta{padding-left:22px}.telemetry-plugin-summary:before{grid-column:1}}
+
+/* Telemetry registry management refinements */
+.telemetry-filter-row{align-items:flex-end;gap:10px;flex-wrap:wrap}
+.telemetry-filter-row input[type="search"]{min-width:260px}
+.telemetry-plugin-summary{align-items:center}
+.telemetry-plugin-main{text-align:left;justify-self:start}
+.telemetry-plugin-main b,.telemetry-plugin-main small{text-align:left}
+.telemetry-plugin-summary-actions{margin-left:auto;justify-content:flex-end}
+.telemetry-status-pill.telemetry-enabled{background:#dcfce7;color:#14532d;border-color:#86efac;font-weight:800}
+.telemetry-status-pill.telemetry-disabled{background:#fee2e2;color:#7f1d1d;border-color:#fca5a5;font-weight:800}
+.telemetry-source-pill.telemetry-source-built-in{background:#bbf7d0;color:#14532d;border-color:#86efac;font-weight:800}
+.telemetry-source-pill.telemetry-source-custom{background:#fef3c7;color:#713f12;border-color:#fcd34d;font-weight:800}
+.telemetry-observed-pill{background:#dbeafe!important;color:#1e3a8a!important;border-color:#93c5fd!important;font-weight:800}
+.telemetry-potential-pill{background:#ede9fe!important;color:#4c1d95!important;border-color:#c4b5fd!important;font-weight:800}
+.telemetry-component-panel summary{cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.telemetry-component-scroll{max-height:260px;overflow:auto;border-top:1px solid rgba(148,163,184,.25);margin-top:8px;padding-top:8px}
+.telemetry-component-scroll ul{margin:.35rem 0;padding-left:1.2rem}
+.telemetry-component-scroll li{margin:.45rem 0;line-height:1.35}
+.telemetry-plugin-edit>summary{background:#111827!important;color:#f9fafb!important;border-radius:8px;padding:10px 12px;font-weight:800}
+.telemetry-plugin-edit>summary:hover{background:#1f2937!important}
+body.dark .telemetry-plugin-edit>summary{background:#020617!important;color:#f8fafc!important;border-color:#475569}
+
+/* Category palette: no white or black */
+.telemetry-plugin-card{border-left-color:#a78bfa}
+.telemetry-category-pill{background:#ede9fe;color:#4c1d95;border-color:#c4b5fd;font-weight:800}
+.telemetry-plugin-card[data-category="Cloud"]{border-left-color:#d1d5db}.telemetry-plugin-card[data-category="Cloud"] .telemetry-category-pill{background:#d1d5db;color:#374151;border-color:#9ca3af}
+.telemetry-plugin-card[data-category="Windows"],.telemetry-plugin-card[data-category="Windows Server"]{border-left-color:#93c5fd}.telemetry-plugin-card[data-category="Windows"] .telemetry-category-pill,.telemetry-plugin-card[data-category="Windows Server"] .telemetry-category-pill{background:#bfdbfe;color:#1e3a8a;border-color:#93c5fd}
+.telemetry-plugin-card[data-category="Linux"]{border-left-color:#86efac}.telemetry-plugin-card[data-category="Linux"] .telemetry-category-pill{background:#bbf7d0;color:#14532d;border-color:#86efac}
+.telemetry-plugin-card[data-category="macOS"]{border-left-color:#f9a8d4}.telemetry-plugin-card[data-category="macOS"] .telemetry-category-pill{background:#fbcfe8;color:#831843;border-color:#f9a8d4}
+.telemetry-plugin-card[data-category="Network"]{border-left-color:#5eead4}.telemetry-plugin-card[data-category="Network"] .telemetry-category-pill{background:#99f6e4;color:#134e4a;border-color:#5eead4}
+.telemetry-plugin-card[data-category="Firewall"]{border-left-color:#fdba74}.telemetry-plugin-card[data-category="Firewall"] .telemetry-category-pill{background:#fed7aa;color:#7c2d12;border-color:#fdba74}
+.telemetry-plugin-card[data-category="Identity"]{border-left-color:#c4b5fd}.telemetry-plugin-card[data-category="Identity"] .telemetry-category-pill{background:#ddd6fe;color:#312e81;border-color:#c4b5fd}
+.telemetry-plugin-card[data-category="EDR/XDR"],.telemetry-plugin-card[data-category="Endpoint"]{border-left-color:#fca5a5}.telemetry-plugin-card[data-category="EDR/XDR"] .telemetry-category-pill,.telemetry-plugin-card[data-category="Endpoint"] .telemetry-category-pill{background:#fecaca;color:#7f1d1d;border-color:#fca5a5}
+.telemetry-plugin-card[data-category="SIEM"]{border-left-color:#a5b4fc}.telemetry-plugin-card[data-category="SIEM"] .telemetry-category-pill{background:#c7d2fe;color:#312e81;border-color:#a5b4fc}
+.telemetry-plugin-card[data-category="Email"]{border-left-color:#fde68a}.telemetry-plugin-card[data-category="Email"] .telemetry-category-pill{background:#fef3c7;color:#713f12;border-color:#fde68a}
+.telemetry-plugin-card[data-category="Database"]{border-left-color:#67e8f9}.telemetry-plugin-card[data-category="Database"] .telemetry-category-pill{background:#a5f3fc;color:#164e63;border-color:#67e8f9}
+.telemetry-plugin-card[data-category="OT/ICS"]{border-left-color:#fcd34d}.telemetry-plugin-card[data-category="OT/ICS"] .telemetry-category-pill{background:#fde68a;color:#78350f;border-color:#fcd34d}
+.telemetry-plugin-card[data-category="DevOps"]{border-left-color:#bef264}.telemetry-plugin-card[data-category="DevOps"] .telemetry-category-pill{background:#d9f99d;color:#365314;border-color:#bef264}
+.telemetry-plugin-card[data-category="SaaS"]{border-left-color:#fecdd3}.telemetry-plugin-card[data-category="SaaS"] .telemetry-category-pill{background:#ffe4e6;color:#881337;border-color:#fecdd3}
+.telemetry-plugin-card[data-category="Virtualization"]{border-left-color:#94a3b8}.telemetry-plugin-card[data-category="Virtualization"] .telemetry-category-pill{background:#cbd5e1;color:#334155;border-color:#94a3b8}
+.telemetry-plugin-card[data-category="DNS/DHCP"]{border-left-color:#7dd3fc}.telemetry-plugin-card[data-category="DNS/DHCP"] .telemetry-category-pill{background:#bae6fd;color:#075985;border-color:#7dd3fc}
+.telemetry-plugin-card[data-category="VPN"]{border-left-color:#86efac}.telemetry-plugin-card[data-category="VPN"] .telemetry-category-pill{background:#bbf7d0;color:#14532d;border-color:#86efac}
+.telemetry-plugin-card[data-category="Container"]{border-left-color:#67e8f9}.telemetry-plugin-card[data-category="Container"] .telemetry-category-pill{background:#cffafe;color:#164e63;border-color:#67e8f9}
+.telemetry-plugin-card[data-category="Storage"]{border-left-color:#fde047}.telemetry-plugin-card[data-category="Storage"] .telemetry-category-pill{background:#fef08a;color:#713f12;border-color:#fde047}
+.telemetry-plugin-card[data-category="Web"]{border-left-color:#93c5fd}.telemetry-plugin-card[data-category="Web"] .telemetry-category-pill{background:#dbeafe;color:#1e3a8a;border-color:#93c5fd}
+
+/* Telemetry plugin toolbar and badge refinements */
+.telemetry-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:flex-end;
+  gap:16px;
+  flex-wrap:wrap;
+  margin-bottom:12px;
+}
+.telemetry-filter-left{
+  display:flex;
+  gap:12px;
+  align-items:flex-end;
+  flex-wrap:wrap;
+  justify-content:flex-start;
+}
+.telemetry-filter-left label{display:flex;flex-direction:column;gap:4px;font-weight:600}
+.telemetry-filter-left input[type="search"]{min-width:300px}
+.telemetry-filter-right{
+  margin-left:auto;
+  display:flex;
+  gap:8px;
+  align-items:center;
+  justify-content:flex-end;
+  flex-wrap:wrap;
+  text-align:right;
+}
+.telemetry-filter-right h3{margin:0 8px 0 0;white-space:nowrap}
+.telemetry-action-form{display:inline-flex;margin:0}
+.telemetry-labeled-pill{
+  display:flex;
+  flex-direction:column;
+  gap:3px;
+  align-items:flex-start;
+}
+.telemetry-label-heading{
+  font-size:.68rem;
+  line-height:1;
+  text-transform:uppercase;
+  letter-spacing:.04em;
+  font-weight:800;
+  opacity:.72;
+}
+.telemetry-status-pill.telemetry-enabled{background:#16a34a!important;color:#fff!important;border-color:#15803d!important;font-weight:800}
+.telemetry-status-pill.telemetry-disabled{background:#dc2626!important;color:#fff!important;border-color:#b91c1c!important;font-weight:800}
+.telemetry-source-pill.telemetry-source-built-in{background:#15803d!important;color:#fff!important;border-color:#166534!important;font-weight:800}
+.telemetry-source-pill.telemetry-source-custom{background:#ca8a04!important;color:#111827!important;border-color:#a16207!important;font-weight:800}
+.telemetry-quality-pill.telemetry-quality-strong{background:#166534!important;color:#fff!important;border-color:#14532d!important;font-weight:800}
+.telemetry-quality-pill.telemetry-quality-partial{background:#ea580c!important;color:#111827!important;border-color:#c2410c!important;font-weight:800}
+.telemetry-observed-pill{background:#2563eb!important;color:#fff!important;border-color:#1d4ed8!important;font-weight:800}
+.telemetry-potential-pill{background:#7c3aed!important;color:#fff!important;border-color:#6d28d9!important;font-weight:800}
+@media(max-width:980px){
+  .telemetry-filter-right{justify-content:flex-start;text-align:left;margin-left:0}
+  .telemetry-filter-right h3{width:100%;margin-bottom:4px}
+  .telemetry-filter-left input[type="search"]{min-width:220px;width:100%}
+}
+
+/* Environment profile assessment */
+.telemetry-profile-selected{background:#4f46e5;color:#fff;}
+.telemetry-profile-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));align-items:stretch;}
+.telemetry-profile-card{border-left:6px solid #c7d2fe;}
+.telemetry-profile-card.telemetry-profile-active{border-left-color:#4f46e5;box-shadow:0 0 0 2px rgba(79,70,229,.25);}
+.telemetry-profile-card summary{cursor:pointer;}
+
+
+/* PCAP Mapper v2.56 MITRE color normalization: observed red, validated yellow, covered/theoretical green. */
+.legend-item.observed,.box.observed{background:#ef4444!important;color:#ffffff!important;border-color:#b91c1c!important}
+.legend-item.validated,.box.validated{background:#facc15!important;color:#111827!important;border-color:#ca8a04!important}
+.legend-item.covered,.box.coverage{background:#22c55e!important;color:#052e16!important;border-color:#15803d!important}
+.legend-item.partial,.box.partial{background:#86efac!important;color:#052e16!important;border-color:#22c55e!important}
+.box.observed small{color:#fee2e2!important}.box.validated small,.box.coverage small,.box.partial small{color:#111827!important}
+body.dark .legend-item.observed,body.dark .box.observed{background:#991b1b!important;color:#fee2e2!important;border-color:#ef4444!important}
+body.dark .legend-item.validated,body.dark .box.validated{background:#a16207!important;color:#fef9c3!important;border-color:#facc15!important}
+body.dark .legend-item.covered,body.dark .box.coverage{background:#166534!important;color:#dcfce7!important;border-color:#22c55e!important}
+body.dark .legend-item.partial,body.dark .box.partial{background:#14532d!important;color:#dcfce7!important;border-color:#86efac!important}

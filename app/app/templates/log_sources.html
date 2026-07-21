@@ -1,0 +1,201 @@
+{% extends 'base.html' %}
+{% block body %}
+<section class="card">
+  <h2>Log Sources</h2>
+  <p class="muted">Enterprise telemetry inventory and ATT&CK coverage contribution based on the current analysis.</p>
+
+  <div class="log-overview">
+    <div class="mini-card"><b>Telemetry Maturity</b><br><span class="big-number">{{ telemetry.enterprise.get('maturity','Limited') }}</span><br><small>{{ telemetry.enterprise.get('overall_score',0) }}% enterprise score</small></div>
+    <div class="mini-card"><b>Telemetry Sources</b><br><span class="big-number">{{ telemetry.overview|length }}</span><br><small>{{ telemetry.rows|length }} observed/inferred rows</small></div>
+    <div class="mini-card"><b>ATT&CK Techniques Supported</b><br><span class="big-number">{{ telemetry.enterprise.get('rule_coverage',{}).get('covered_with_rules',0) }}</span><br><small>covered and backed by rules</small></div>
+    <div class="mini-card"><b>Validated Techniques</b><br><span class="big-number">{{ telemetry.enterprise.get('rule_coverage',{}).get('validated_techniques',0) }}</span><br><small>matched rule evidence</small></div>
+  </div>
+
+  <details open>
+    <summary><b>Enterprise Telemetry Overview</b></summary>
+    <div class="pill-row">
+      {% for name,count in telemetry.overview.items() %}
+        <span class="pill">{{ name }}: {{ count }}</span>
+      {% else %}
+        <span class="muted">No log sources detected yet.</span>
+      {% endfor %}
+    </div>
+  </details>
+
+
+<section class="card">
+  <h3>Theoretical Coverage Diagnostics</h3>
+  {% set diag = telemetry.diagnostics or {} %}
+  <p class="muted">Expansion path: Detected Log Source → ATT&amp;CK Data Components → ATT&amp;CK Data Sources → Supported ATT&amp;CK Techniques → Unified Coverage Model.</p>
+  <div class="log-overview">
+    <div class="mini-card"><b>Detected OS</b><br>{% for os in diag.get('detected_operating_systems', diag.get('detected_os_scope', [])) %}<span class="pill">{{ os }}</span>{% else %}<span class="muted">None</span>{% endfor %}</div>
+    <div class="mini-card"><b>Detected Log Sources</b><br><span class="big-number">{{ (diag.get('detected_log_sources', []) or [])|length }}</span></div>
+    <div class="mini-card"><b>Expanded Components</b><br><span class="big-number">{{ (diag.get('components', []) or [])|length }}</span></div>
+    <div class="mini-card"><b>ATT&amp;CK Data Sources</b><br><span class="big-number">{{ (diag.get('attack_data_sources', []) or [])|length }}</span></div>
+    <div class="mini-card"><b>Supported Techniques</b><br><span class="big-number">{{ diag.get('supported_technique_count', diag.get('theoretical_technique_count', 0)) }}</span><br><small>{{ diag.get('coverage_ratio', '') }}</small></div>
+  </div>
+  <details open><summary><b>Detected Log Sources → Components → Techniques</b></summary>
+    <table><tr><th>Detected Log Source</th><th>Category</th><th>ATT&amp;CK Data Components</th><th>ATT&amp;CK Data Sources</th><th>Supported Techniques</th></tr>
+    {% for row in diag.get('source_rows', []) %}
+      <tr><td>{{ row.source }}</td><td>{{ row.category }}</td><td>{{ (row.components or [])|join(', ') }}</td><td>{{ (row.attack_data_sources or [])|join(', ') }}</td><td>{{ row.technique_count }}</td></tr>
+    {% else %}<tr><td colspan="5" class="muted">No theoretical expansion data available.</td></tr>{% endfor %}</table>
+  </details>
+  <details><summary><b>Unmapped Log Diagnostics</b></summary>
+    <table><tr><th>Detected Log Source</th><th>Reason not mapped</th><th>Suggested parser</th><th>Suggested ATT&amp;CK Data Component</th></tr>
+    {% for row in diag.get('unmapped_details', []) %}
+      <tr><td>{{ row.source }}</td><td>{{ row.reason }}</td><td>{{ row.suggested_parser }}</td><td>{{ row.suggested_attack_data_component }}</td></tr>
+    {% else %}<tr><td colspan="4" class="muted">All detected log sources have component/technique mappings.</td></tr>{% endfor %}</table>
+  </details>
+</section>
+
+  <div class="log-filters">
+    <input id="logQ" placeholder="search source, host, collector, evidence, component" oninput="filterLogSources()">
+    <select id="logCategory" onchange="filterLogSources()">
+      <option value="">Any category</option>
+      {% for cat in telemetry.categories.keys() %}<option value="{{ cat }}">{{ cat }}</option>{% endfor %}
+    </select>
+    <select id="logConfidence" onchange="filterLogSources()">
+      <option value="">Any confidence/status</option>
+      <option value="Observed">Observed</option>
+      <option value="Inferred">Inferred</option>
+      <option value="Configured">Configured</option>
+      <option value="Validated">Validated</option>
+    </select>
+    <a class="btn" href="/log-sources/export/csv{% if job_id %}?job={{ job_id }}{% endif %}">Export CSV</a>
+    <a class="btn" href="/log-sources/export/json{% if job_id %}?job={{ job_id }}{% endif %}">Export JSON</a>
+  </div>
+</section>
+
+<section class="log-layout">
+  <div class="card log-table-card">
+    <h3>Telemetry Inventory</h3>
+    <table id="logTable">
+      <thead><tr><th>Source</th><th>Category</th><th>Host</th><th>Collector</th><th>Protocol</th><th>Confidence</th><th>ATT&CK</th></tr></thead>
+      <tbody>
+      {% for l in telemetry.rows %}
+        <tr data-index="{{ loop.index0 }}" data-category="{{ l.category }}" data-confidence="{{ l.confidence }}" onclick="showLogSource({{ loop.index0 }})">
+          <td>{{ l.source }}</td>
+          <td>{{ l.category }}</td>
+          <td>{{ l.host }}</td>
+          <td>{{ l.collector }}</td>
+          <td>{{ l.protocol }}{% if l.port %}/{{ l.port }}{% endif %}</td>
+          <td>{{ l.confidence }}</td>
+          <td>{{ l.technique_count }} techniques</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card log-detail-card">
+    <h3>Selected Source Details</h3>
+    <div id="logEmpty" class="muted">Select a log source row to view evidence, ATT&CK components, and rule dependencies.</div>
+    <div id="logDetail" style="display:none">
+      <div class="detail-grid">
+        <div><b>Source</b><br><span id="dSource"></span></div>
+        <div><b>Category</b><br><span id="dCategory"></span></div>
+        <div><b>Status</b><br><span id="dStatus"></span></div>
+        <div><b>Confidence</b><br><span id="dConfidence"></span></div>
+        <div><b>Host</b><br><span id="dHost"></span></div>
+        <div><b>Collector</b><br><span id="dCollector"></span></div>
+        <div><b>Protocol</b><br><span id="dProtocol"></span></div>
+        <div><b>ATT&CK Techniques</b><br><span id="dTechniqueCount"></span></div>
+      </div>
+      <h4>Evidence</h4>
+      <p id="dEvidence" class="muted"></p>
+      <h4>ATT&CK Data Components</h4>
+      <div id="dComponents"></div>
+      <h4>Related Rules</h4>
+      <div id="dRules" class="muted">No directly mapped rule dependencies were found.</div>
+    </div>
+  </div>
+</section>
+
+<section class="grid">
+  <div class="card">
+    <h3>Coverage Contribution</h3>
+    <table>
+      <tr><th>Log Source</th><th>Techniques Supported</th></tr>
+      {% for name,count in telemetry.overview.items() %}
+        {% set row = (telemetry.rows|selectattr('source','equalto',name)|list|first) %}
+        <tr><td>{{ name }}</td><td>{{ row.technique_count if row else 0 }}</td></tr>
+      {% else %}
+        <tr><td colspan="2" class="muted">No coverage contribution yet.</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Missing Telemetry</h3>
+    <p class="muted">Enterprise-level recommendations inferred from the telemetry not seen in this capture.</p>
+    {% for m in telemetry.missing[:12] %}
+      <span class="pill">{{ m.category }}: {{ m.source }}</span>
+    {% else %}
+      <p class="muted">No major missing telemetry identified.</p>
+    {% endfor %}
+  </div>
+
+
+  <div class="card">
+    <h3>Detection Readiness</h3>
+    {% for r in telemetry.enterprise.get('readiness', [])[:8] %}
+      <p><b>{{ r.tactic }}</b>: {{ r.readiness }} <span class="muted">({{ r.score }}%)</span></p>
+    {% else %}
+      <p class="muted">No readiness data available.</p>
+    {% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <h3>Telemetry Timeline</h3>
+  <ol class="timeline">
+  {% for t in telemetry.timeline %}
+    <li><b>{{ t.time }}</b> — {{ t.source }} {% if t.host %}on {{ t.host }}{% endif %}<br><small>{{ t.evidence }}</small></li>
+  {% else %}
+    <li class="muted">No timestamped telemetry events available.</li>
+  {% endfor %}
+  </ol>
+</section>
+
+<script id="log-json" type="application/json">{{ telemetry | tojson }}</script>
+<script>
+const telemetry = JSON.parse(document.getElementById('log-json').textContent || '{}');
+const rows = telemetry.rows || [];
+const deps = telemetry.dependencies || {};
+const logParams = new URLSearchParams(window.location.search);
+function norm(v){ return String(v || '').toLowerCase(); }
+function filterLogSources(){
+  const q = norm(document.getElementById('logQ').value);
+  const cat = document.getElementById('logCategory').value;
+  const conf = document.getElementById('logConfidence').value;
+  document.querySelectorAll('#logTable tbody tr').forEach(tr => {
+    const row = rows[Number(tr.dataset.index)] || {};
+    const text = norm(JSON.stringify(row));
+    const ok = (!q || text.includes(q)) && (!cat || row.category === cat) && (!conf || norm(row.confidence).includes(norm(conf)) || norm(row.status).includes(norm(conf)));
+    tr.style.display = ok ? '' : 'none';
+  });
+}
+function pill(text){ return `<span class="pill">${String(text).replace(/[<>&]/g, s => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</span>`; }
+function showLogSource(i){
+  const row = rows[i]; if(!row) return;
+  document.querySelectorAll('#logTable tbody tr').forEach(tr => tr.classList.toggle('selected-flow', Number(tr.dataset.index) === i));
+  document.getElementById('logEmpty').style.display = 'none';
+  document.getElementById('logDetail').style.display = '';
+  document.getElementById('dSource').textContent = row.source || '';
+  document.getElementById('dCategory').textContent = row.category || '';
+  document.getElementById('dStatus').textContent = row.status || '';
+  document.getElementById('dConfidence').textContent = row.confidence || '';
+  document.getElementById('dHost').textContent = row.host || '';
+  document.getElementById('dCollector').textContent = row.collector || '';
+  document.getElementById('dProtocol').textContent = [row.protocol || '', row.port || ''].filter(Boolean).join('/');
+  document.getElementById('dTechniqueCount').textContent = row.technique_count || 0;
+  document.getElementById('dEvidence').textContent = row.evidence || 'No evidence text available.';
+  document.getElementById('dComponents').innerHTML = (row.components || []).map(pill).join(' ') || '<span class="muted">No mapped data components.</span>';
+  document.getElementById('dRules').innerHTML = (deps[row.source] || []).slice(0,20).map(pill).join(' ') || '<span class="muted">No directly mapped rule dependencies were found.</span>';
+}
+if(logParams.get('ip')) document.getElementById('logQ').value = logParams.get('ip');
+else if(logParams.get('q')) document.getElementById('logQ').value = logParams.get('q');
+if(logParams.get('category')) document.getElementById('logCategory').value = logParams.get('category');
+filterLogSources();
+</script>
+{% endblock %}

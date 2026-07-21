@@ -1,0 +1,990 @@
+import os, uuid, csv, json, threading, time
+from io import StringIO, BytesIO
+from pathlib import Path
+from flask import Flask, request, redirect, url_for, render_template, jsonify, send_file, abort, Response
+from app.config import UPLOAD_DIR, RESULT_DIR, REPORT_DIR, EXPORT_DIR, MAX_UPLOAD_GB
+from app.jobs.manager import start_workers, create_job, create_empty_job, delete_job, list_jobs, get_job, _update
+from app.rules.engine import load_rules, add_rule, validate_rule, build_validation_results, delete_rule, set_rule_enabled, preview_rule, load_rule_history, export_rules, import_rules_from_file, rule_conflicts, templates as rule_templates, attack_pipeline_diagnostics
+from app.utils import read_json, validate_capture, write_json, sha256_file, capture_sha256, expand_supported_upload, is_supported_capture_upload, safe_relative_path
+from app.attack.versioned import (
+    build_data_source_coverage,
+    enterprise_coverage_assessment,
+    detected_data_sources,
+    SOURCE_CATEGORY,
+    SOURCE_COMPONENTS,
+    RECOMMENDATION_LIBRARY,
+    VALID_TECHNIQUES,
+    LEGACY_TECHNIQUES,
+    TACTIC_DISPLAY_ORDER,
+    build_enterprise_attack_coverage_model,
+    _detected_coverage_scope,
+    _technique_in_detected_scope,
+)
+from app.reports.generator import generate_reports
+
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = MAX_UPLOAD_GB * 1024 * 1024 * 1024
+
+
+
+def is_capture_upload(filename):
+    return is_supported_capture_upload(filename)
+
+
+def safe_relative_upload_path(filename):
+    return safe_relative_path(filename)
+
+
+
+def existing_capture_hashes(job_id=None):
+    """Return SHA-256 hashes already associated with the target job.
+
+    Duplicate detection is intentionally limited to the current/target job so
+    previous results can still contain the same capture without blocking a new
+    investigation.  It uses stored processed-file hashes first, then falls back
+    to hashing existing job file paths when needed.
+    """
+    hashes = set()
+    if not job_id:
+        return hashes
+    job = get_job(job_id) or {}
+    result_path = RESULT_DIR / job_id / 'result.json'
+    result = read_json(result_path, {})
+    for item in result.get('processed_files', []) or []:
+        digest = item.get('sha256') or item.get('hash')
+        if digest:
+            hashes.add(digest)
+    for file_path in job.get('files', []) or []:
+        try:
+            fp = Path(file_path)
+            if fp.exists() and fp.is_file():
+                hashes.add(capture_sha256(fp))
+        except Exception:
+            continue
+    return hashes
+
+
+def save_unique_capture_uploads(files, append_to=None):
+    """Save capture uploads, expanding compressed/archive inputs and skipping duplicates.
+
+    Supported inputs include .pcap, .pcapng, .pcap.gz, .pcapng.gz,
+    .pcap.bz2, .pcapng.bz2, .pcap.xz, .pcapng.xz, .zip, .tar,
+    .tar.gz/.tgz, .tar.bz2/.tbz2, and .tar.xz/.txz. Archives may contain
+    multiple captures and preserve safe relative paths.
+    """
+    saved = []
+    skipped_duplicates = []
+    skipped_invalid = []
+    seen = existing_capture_hashes(append_to)
+    upload_root = UPLOAD_DIR / f"directory_upload_{uuid.uuid4().hex}"
+    staging_root = upload_root / '_archives'
+    extracted_root = upload_root / 'captures'
+    upload_root.mkdir(parents=True, exist_ok=True)
+    for f in files:
+        if not f.filename:
+            continue
+        if not is_supported_capture_upload(f.filename):
+            skipped_invalid.append({'file': f.filename, 'reason': 'unsupported file type'})
+            continue
+        rel = safe_relative_upload_path(f.filename)
+        staging_path = staging_root / rel
+        staging_path.parent.mkdir(parents=True, exist_ok=True)
+        f.save(staging_path)
+        expanded_paths, expanded_skipped = expand_supported_upload(staging_path, extracted_root / rel.parent)
+        skipped_invalid.extend(expanded_skipped)
+        if not expanded_paths:
+            skipped_invalid.append({'file': f.filename, 'reason': 'no valid PCAP/PCAPNG files found'})
+        for path in expanded_paths:
+            try:
+                digest = capture_sha256(path)
+            except Exception as exc:
+                skipped_invalid.append({'file': str(path.name), 'reason': f'could not hash capture: {exc}'})
+                try: path.unlink()
+                except Exception: pass
+                continue
+            if digest in seen:
+                skipped_duplicates.append({'file': str(path.name), 'sha256': digest})
+                try: path.unlink()
+                except Exception: pass
+                continue
+            seen.add(digest)
+            saved.append(path)
+        # Keep single uploaded captures in their final location, but archive
+        # containers themselves are not analyzed after expansion.
+        if staging_path.exists() and staging_path not in saved:
+            try:
+                staging_path.unlink()
+            except Exception:
+                pass
+    return saved, skipped_duplicates, skipped_invalid
+
+
+DEFAULT_RESULT = {
+    'summary': {},
+    'hosts': [],
+    'flows': [],
+    'protocols': {},
+    'iocs': {'ips': [], 'domains': [], 'urls': []},
+    'findings': [],
+    'log_sources': [],
+    'techniques': [],
+    'normalized_events': [],
+    'normalized_event_summary': {},
+    'data_source_coverage': [],
+    'enterprise_coverage': {},
+    'rule_validations': {'summary': {}, 'matches': [], 'validated_techniques': []},
+    'validated_techniques': [],
+    'rule_validation_status': 'not_run',
+    'rule_validation_message': 'Rule validation has not been run yet.',
+}
+
+
+
+def normalize_result(result):
+    merged = {**DEFAULT_RESULT, **(result or {})}
+    iocs = merged.get('iocs') or {}
+    merged['iocs'] = {
+        'ips': iocs.get('ips') or [],
+        'domains': iocs.get('domains') or [],
+        'urls': iocs.get('urls') or [],
+    }
+    for key in ['hosts', 'flows', 'findings', 'log_sources', 'techniques', 'normalized_events', 'data_source_coverage', 'validated_techniques']:
+        merged[key] = merged.get(key) or []
+    merged['summary'] = merged.get('summary') or {}
+    merged['protocols'] = merged.get('protocols') or {}
+    merged['normalized_event_summary'] = merged.get('normalized_event_summary') or {}
+    if not merged.get('data_source_coverage'):
+        merged['data_source_coverage'] = build_data_source_coverage(merged)
+    if not merged.get('rule_validations'):
+        merged['rule_validations'] = {'summary': {}, 'matches': [], 'validated_techniques': []}
+    if not merged.get('rule_validation_status'):
+        merged['rule_validation_status'] = 'not_run'
+    if not merged.get('rule_validation_message'):
+        merged['rule_validation_message'] = 'Rule validation has not been run yet.'
+    if not merged.get('enterprise_coverage'):
+        try:
+            merged['enterprise_coverage'] = enterprise_coverage_assessment(merged, load_rules())
+        except Exception:
+            merged['enterprise_coverage'] = {}
+    return merged
+
+
+
+def _attack_registry_for_mode(attack_mode):
+    return LEGACY_TECHNIQUES if attack_mode == 'legacy' else VALID_TECHNIQUES
+
+
+def build_tactic_rollups(result, rules=None, attack_mode='stix'):
+    """Build tactic rollups from the canonical Enterprise ATT&CK coverage model.
+
+    Observed and Theoretical no longer use separate data paths.  Theoretical is
+    telemetry-supported coverage UNION observed techniques, so anything observed
+    is also represented in the theoretical rollup.  Validated remains dependent
+    on successful rule validation.
+    """
+    result = normalize_result(result)
+    rules = rules or load_rules()
+    if attack_mode == 'legacy':
+        registry = LEGACY_TECHNIQUES
+        def empty_counts():
+            return {t: {'tactic': t, 'name': t.replace('-', ' ').title(), 'covered': 0, 'total': 0, 'score': 0} for t in TACTIC_DISPLAY_ORDER}
+        totals = {t: 0 for t in TACTIC_DISPLAY_ORDER}
+        for tid, meta in registry.items():
+            tactic = meta.get('tactic')
+            if tactic in totals:
+                totals[tactic] += 1
+        observed_ids = {x.get('techniqueID') or x.get('technique_id') for x in result.get('techniques', []) or []}
+        theoretical_ids = ({x.get('techniqueID') for x in (result.get('data_source_coverage') or build_data_source_coverage(result)) if x.get('techniqueID')} | observed_ids)
+        validated_items = result.get('validated_techniques') or (result.get('rule_validations') or {}).get('validated_techniques') or []
+        validated_ids = {x.get('techniqueID') for x in validated_items if x.get('techniqueID')}
+        rollups = {'observed': empty_counts(), 'theoretical': empty_counts(), 'validated': empty_counts()}
+        for key in rollups:
+            for tactic, total in totals.items():
+                rollups[key][tactic]['total'] = total
+        for dataset, ids in [('observed', observed_ids), ('theoretical', theoretical_ids), ('validated', validated_ids)]:
+            for tid in ids:
+                meta = registry.get(tid)
+                if not meta: continue
+                tactic = meta.get('tactic')
+                if tactic in rollups[dataset]: rollups[dataset][tactic]['covered'] += 1
+            for tactic, row in rollups[dataset].items():
+                row['score'] = round((row['covered'] / row['total']) * 100, 1) if row['total'] else 0
+        return {key: [rows[t] for t in TACTIC_DISPLAY_ORDER if t in rows] for key, rows in rollups.items()}
+    model = build_enterprise_attack_coverage_model(result, rules)
+    return model.get('rollups', {'observed': [], 'theoretical': [], 'validated': []})
+
+
+def build_log_source_view(result):
+    """Build page-only telemetry context for the Log Sources view.
+
+    This keeps the underlying analysis data unchanged and only enriches it for
+    display/export on /log-sources.
+    """
+    result = normalize_result(result)
+    rows = []
+    raw = result.get('log_sources', []) or []
+    coverage = result.get('data_source_coverage') or build_data_source_coverage(result)
+    coverage_by_source = {}
+    for item in coverage:
+        for src in item.get('data_sources', []) or []:
+            coverage_by_source.setdefault(src, set()).add(item.get('techniqueID'))
+
+    detected = set(detected_data_sources(result))
+    # Preserve row-level observations, then add source-level context.
+    for idx, lsrc in enumerate(raw):
+        evidence_text = ' '.join(str(lsrc.get(k, '')) for k in ['collector', 'protocol', 'port', 'confidence', 'evidence', 'technology', 'log_source', 'source_type'])
+        matched = [s for s in detected if s.lower() in evidence_text.lower()]
+        if not matched:
+            matched = [lsrc.get('technology') or lsrc.get('log_source') or lsrc.get('source_type') or lsrc.get('protocol') or 'Unknown']
+        for source in matched[:3]:
+            rows.append({
+                'id': f'ls-{idx}-{len(rows)}',
+                'source': source,
+                'category': SOURCE_CATEGORY.get(source, 'Other'),
+                'host': lsrc.get('host', ''),
+                'collector': lsrc.get('collector', ''),
+                'protocol': lsrc.get('protocol', ''),
+                'port': lsrc.get('port', ''),
+                'confidence': lsrc.get('confidence', 'Observed'),
+                'status': lsrc.get('status') or lsrc.get('confidence') or 'Observed',
+                'evidence': lsrc.get('evidence', ''),
+                'components': SOURCE_COMPONENTS.get(source, []),
+                'technique_count': len(coverage_by_source.get(source, set())),
+                'first_seen': lsrc.get('first_seen') or lsrc.get('ts') or '',
+                'last_seen': lsrc.get('last_seen') or lsrc.get('ts') or '',
+            })
+
+    # If no row was directly captured but enterprise telemetry sources were
+    # inferred, display source-level entries so the page is still useful.
+    existing = {r['source'] for r in rows}
+    for source in sorted(detected - existing):
+        rows.append({
+            'id': f'inferred-{source.lower().replace(" ", "-")}',
+            'source': source,
+            'category': SOURCE_CATEGORY.get(source, 'Other'),
+            'host': '', 'collector': '', 'protocol': '', 'port': '',
+            'confidence': 'Inferred', 'status': 'Inferred',
+            'evidence': 'Inferred from enterprise telemetry/log-source indicators in the current analysis.',
+            'components': SOURCE_COMPONENTS.get(source, []),
+            'technique_count': len(coverage_by_source.get(source, set())),
+            'first_seen': '', 'last_seen': '',
+        })
+
+    overview = {}
+    for row in rows:
+        overview[row['source']] = overview.get(row['source'], 0) + 1
+    categories = {}
+    for row in rows:
+        categories[row['category']] = categories.get(row['category'], 0) + 1
+
+    enterprise = result.get('enterprise_coverage') or enterprise_coverage_assessment(result, load_rules())
+    detected_sources = set(detected)
+    expected_by_category = {
+        'Windows': ['Windows Event Log', 'Windows Event Forwarding', 'Sysmon', 'PowerShell Operational Log', 'Defender', 'Winlogbeat'],
+        'Linux': ['systemd-journald', 'auditd', 'rsyslog', 'syslog-ng'],
+        'macOS': ['Apple Unified Logging', 'OpenBSM', 'osquery'],
+        'Network': ['Syslog', 'Syslog TLS', 'Zeek', 'Suricata', 'Packetbeat', 'NetFlow', 'IPFIX', 'sFlow', 'SNMP Trap'],
+        'SIEM / Forwarding': ['Elastic Agent', 'Filebeat', 'Auditbeat', 'Fluent Bit', 'Fluentd', 'Vector', 'OpenTelemetry Collector'],
+    }
+    missing = []
+    for cat, names in expected_by_category.items():
+        for name in names:
+            if name not in detected_sources:
+                missing.append({'category': cat, 'source': name, 'reason': 'Not detected in this capture or current telemetry inventory.'})
+
+    rule_list = load_rules()
+    dependencies = {}
+    for rule in rule_list:
+        reqs = rule.get('required_telemetry') or rule.get('dependencies') or []
+        if isinstance(reqs, str):
+            reqs = [reqs]
+        blob = ' '.join(str(x) for x in reqs + [rule.get('description',''), rule.get('name','')])
+        for source in detected_sources:
+            if source.lower() in blob.lower():
+                dependencies.setdefault(source, []).append(rule.get('name', 'Unnamed rule'))
+
+    recommendations = []
+    for rec in RECOMMENDATION_LIBRARY:
+        if rec.get('source') not in detected_sources:
+            recommendations.append(rec)
+
+    timeline = []
+    for row in rows:
+        ts = row.get('first_seen') or row.get('last_seen')
+        if ts:
+            timeline.append({'time': ts, 'source': row['source'], 'host': row.get('host',''), 'evidence': row.get('evidence','')})
+    timeline = sorted(timeline, key=lambda x: str(x.get('time','')))[:100]
+
+    return {
+        'rows': rows,
+        'overview': dict(sorted(overview.items(), key=lambda x: (-x[1], x[0]))),
+        'categories': dict(sorted(categories.items())),
+        'enterprise': enterprise,
+        'missing': missing[:30],
+        'recommendations': sorted(recommendations, key=lambda r: -int(r.get('gain', 0)))[:8],
+        'dependencies': dependencies,
+        'timeline': timeline,
+    }
+
+
+def save_result_for_job(jid, result):
+    if not jid:
+        return
+    out = RESULT_DIR / jid / 'result.json'
+    out.parent.mkdir(parents=True, exist_ok=True)
+    write_json(out, result)
+
+
+def mark_validation_stale(reason='Rules changed; validation should be re-run.'):
+    jobs = list_jobs()
+    for jid, job in jobs.items():
+        p = RESULT_DIR / jid / 'result.json'
+        if not p.exists():
+            continue
+        result = read_json(p, {})
+        if not result:
+            continue
+        result['rule_validation_status'] = 'stale'
+        result['rule_validation_message'] = reason
+        # Preserve prior validation evidence for review, but make the status
+        # clear so the heat map/rule pages do not imply fresh validation.
+        write_json(p, result)
+
+
+VALIDATION_LOCK = threading.Lock()
+VALIDATION_THREADS = set()
+
+
+def update_rule_validation_progress(jid, status, progress, message):
+    """Persist rule-validation progress for the current job."""
+    if not jid:
+        return
+    result, _ = load_result(jid)
+    result['rule_validation_status'] = status
+    result['rule_validation_progress'] = int(progress)
+    result['rule_validation_message'] = message
+    save_result_for_job(jid, result)
+    _update(jid, rule_validation_status=status, rule_validation_progress=int(progress), rule_validation_message=message)
+
+
+def run_rule_validation_for_job(jid):
+    result, jid = load_result(jid)
+    if not jid:
+        return result, None
+    update_rule_validation_progress(jid, 'running', 5, 'Rule validation started.')
+    rules = load_rules()
+    update_rule_validation_progress(jid, 'running', 15, f'Loaded {len(rules)} rules; evaluating current analysis.')
+    validations = build_validation_results(result, rules)
+    update_rule_validation_progress(jid, 'running', 85, 'Rule matches complete; rebuilding ATT&CK coverage.')
+    result, _ = load_result(jid)
+    result['rule_validations'] = validations
+    result['validated_techniques'] = validations.get('validated_techniques', [])
+    result['attack_pipeline_diagnostics'] = validations.get('attack_pipeline_diagnostics') or attack_pipeline_diagnostics(result, validations, rules)
+    result['rule_validation_status'] = 'complete'
+    result['rule_validation_progress'] = 100
+    result['rule_validation_message'] = 'Rule validation completed on demand.'
+    result['enterprise_coverage'] = enterprise_coverage_assessment(result, rules)
+    result['enterprise_attack_coverage_model'] = build_enterprise_attack_coverage_model(result, rules)
+    save_result_for_job(jid, result)
+    _update(jid, rule_validation_status='complete', rule_validation_progress=100, rule_validation_message='Rule validation completed on demand.')
+    return result, jid
+
+
+def start_rule_validation_for_job(jid):
+    """Start validation in the background so the page can show progress."""
+    if not jid:
+        return None
+    with VALIDATION_LOCK:
+        if jid in VALIDATION_THREADS:
+            return jid
+        result, _ = load_result(jid)
+        if result.get('rule_validation_status') == 'running':
+            return jid
+        update_rule_validation_progress(jid, 'running', 0, 'Queued rule validation.')
+        VALIDATION_THREADS.add(jid)
+
+    def _runner():
+        try:
+            run_rule_validation_for_job(jid)
+        except Exception as exc:
+            result, _ = load_result(jid)
+            result['rule_validation_status'] = 'failed'
+            result['rule_validation_progress'] = result.get('rule_validation_progress', 0)
+            result['rule_validation_message'] = f'Rule validation failed: {exc}'
+            save_result_for_job(jid, result)
+            _update(jid, rule_validation_status='failed', rule_validation_progress=result.get('rule_validation_progress', 0), rule_validation_message=result['rule_validation_message'])
+        finally:
+            with VALIDATION_LOCK:
+                VALIDATION_THREADS.discard(jid)
+
+    threading.Thread(target=_runner, daemon=True).start()
+    return jid
+
+def start_services():
+    start_workers()
+
+
+def latest_job_id():
+    jobs=list_jobs()
+    if not jobs: return None
+    return sorted(jobs.values(), key=lambda x:x.get('updated',x.get('created',0)), reverse=True)[0]['id']
+
+
+
+
+def rule_from_form(form, network=False):
+    rule={
+        'name': form.get('name','Custom Rule'),
+        'description': form.get('description',''),
+        'event_type': form.get('event_type') or 'flow',
+        'protocol': form.get('protocol') or None,
+        'port': int(form.get('port') or 0) or None,
+        'severity': form.get('severity','medium'),
+        'severity_override': form.get('severity_override') or '',
+        'confidence': form.get('confidence') or 'medium',
+        'version': form.get('version') or '1.0',
+        'attack': [x.strip() for x in form.get('attack','').split(',') if x.strip()],
+        'requires': [x.strip() for x in form.get('requires','').split(',') if x.strip()],
+        'exclude_src_ips': [x.strip() for x in form.get('exclude_src_ips','').split(',') if x.strip()],
+        'exclude_dst_ips': [x.strip() for x in form.get('exclude_dst_ips','').split(',') if x.strip()],
+        'exclude_protocols': [x.strip() for x in form.get('exclude_protocols','').split(',') if x.strip()],
+    }
+    if network:
+        rule['rule_type']='network'
+    return {k:v for k,v in rule.items() if v not in [None,'',[]]}
+
+def load_result(jid=None):
+    jid = jid or latest_job_id()
+    if not jid:
+        return normalize_result({}), None
+    p = RESULT_DIR / jid / 'result.json'
+    return normalize_result(read_json(p, {})), jid
+
+@app.route('/', methods=['GET','POST'])
+def dashboard():
+    duplicate_message = ''
+    invalid_upload_message = ''
+    if request.method == 'POST':
+        if request.form.get('action') == 'new_job':
+            jid = create_empty_job()
+            return redirect(url_for('dashboard', job=jid))
+        files = request.files.getlist('pcaps')
+        append_to = request.form.get('append_to') or None
+        saved, duplicate_uploads, invalid_uploads = save_unique_capture_uploads(files, append_to=append_to)
+        if saved:
+            jid = create_job(saved, append_to=append_to, validate_during_analysis=(request.form.get('validate_during_analysis') == '1'))
+            return redirect(url_for('job_status', job_id=jid))
+        if duplicate_uploads:
+            duplicate_message = f"Skipped {len(duplicate_uploads)} duplicate file(s); no new PCAPs were added."
+        if invalid_uploads:
+            invalid_upload_message = f"Ignored {len(invalid_uploads)} unsupported or invalid file(s)."
+    result,jid=load_result(request.args.get('job'))
+    jobs=list_jobs()
+    return render_template('dashboard.html', result=result, job_id=jid, jobs=jobs, duplicate_message=duplicate_message, invalid_upload_message=invalid_upload_message)
+
+@app.route('/jobs/<job_id>')
+def job_status(job_id):
+    return render_template('job.html', job=get_job(job_id), job_id=job_id)
+
+@app.route('/api/jobs/<job_id>')
+def api_job(job_id):
+    return jsonify(get_job(job_id) or {})
+
+@app.route('/api/chunk/init', methods=['POST'])
+def chunk_init():
+    data=request.json or {}
+    upload_id=uuid.uuid4().hex
+    d=UPLOAD_DIR/'chunks'/upload_id; d.mkdir(parents=True, exist_ok=True)
+    write_json(d/'meta.json', {'filename': Path(data.get('filename','upload.pcap')).name, 'size': data.get('size'), 'sha256': data.get('sha256')})
+    return jsonify({'upload_id': upload_id})
+
+@app.route('/api/chunk/<upload_id>/<int:index>', methods=['PUT'])
+def chunk_put(upload_id,index):
+    d=UPLOAD_DIR/'chunks'/upload_id; d.mkdir(parents=True, exist_ok=True)
+    (d/f'{index:08d}.part').write_bytes(request.get_data())
+    return jsonify({'ok': True, 'index': index})
+
+@app.route('/api/chunk/<upload_id>/complete', methods=['POST'])
+def chunk_complete(upload_id):
+    d=UPLOAD_DIR/'chunks'/upload_id
+    meta=read_json(d/'meta.json', {})
+    out=UPLOAD_DIR/f"{uuid.uuid4().hex}_{meta.get('filename','upload.pcap')}"
+    with open(out,'wb') as dst:
+        for part in sorted(d.glob('*.part')):
+            dst.write(part.read_bytes())
+    payload = request.json or {}
+    expand_root = UPLOAD_DIR / f"chunk_upload_{uuid.uuid4().hex}"
+    expanded_paths, expanded_skipped = expand_supported_upload(out, expand_root)
+    if not expanded_paths:
+        try:
+            out.unlink()
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'error': 'No valid PCAP/PCAPNG files found', 'skipped': expanded_skipped}), 400
+    seen = existing_capture_hashes(payload.get('append_to'))
+    saved = []
+    duplicates = []
+    hashes = []
+    for path in expanded_paths:
+        digest = capture_sha256(path)
+        if digest in seen:
+            duplicates.append({'file': path.name, 'sha256': digest})
+            try: path.unlink()
+            except Exception: pass
+            continue
+        seen.add(digest)
+        hashes.append(digest)
+        saved.append(path)
+    try:
+        if out.exists() and out not in saved:
+            out.unlink()
+    except Exception:
+        pass
+    if not saved:
+        return jsonify({'ok': False, 'duplicate': True, 'error': 'Duplicate PCAP skipped; this file is already attached to the selected job.', 'duplicates': duplicates}), 409
+    jid=create_job(saved, append_to=payload.get('append_to'), validate_during_analysis=bool(payload.get('validate_during_analysis')))
+    return jsonify({'ok': True, 'job_id': jid, 'files': [str(p) for p in saved], 'sha256': hashes, 'duplicates': duplicates, 'skipped': expanded_skipped})
+
+@app.route('/assets')
+def assets():
+    result,jid=load_result(request.args.get('job'))
+    return render_template('assets.html', result=result, job_id=jid)
+
+@app.route('/communications')
+def communications():
+    result,jid=load_result(request.args.get('job'))
+    return render_template('communications.html', result=result, job_id=jid)
+
+
+
+
+def filter_normalized_events(events, args):
+    def contains(value, needle):
+        return not needle or needle.lower() in str(value or '').lower()
+    q=(args.get('q') or '').strip()
+    platform=(args.get('platform') or '').strip()
+    log_source=(args.get('log_source') or '').strip()
+    event_type=(args.get('event_type') or '').strip()
+    host=(args.get('host') or '').strip()
+    attack=(args.get('attack') or '').strip()
+    out=[]
+    for e in events or []:
+        raw_blob=' '.join(str(e.get(k,'')) for k in ['raw','event_type','log_source','host','user','process','command_line'])
+        if q and q.lower() not in raw_blob.lower(): continue
+        if not contains(e.get('platform'), platform): continue
+        if not contains(e.get('log_source'), log_source): continue
+        if not contains(e.get('event_type'), event_type): continue
+        if not contains(e.get('host'), host): continue
+        if attack and attack.lower() not in ' '.join(e.get('attack_candidates') or []).lower(): continue
+        out.append(e)
+    return out
+
+
+def related_flows_for_event(event, flows, limit=20):
+    if not event:
+        return []
+    ips={event.get('src_ip'), event.get('dst_ip'), event.get('host')}
+    ips={x for x in ips if x and str(x).count('.')==3}
+    matches=[]
+    for f in flows or []:
+        if f.get('src_ip') in ips or f.get('dst_ip') in ips:
+            matches.append(f)
+            if len(matches) >= limit: break
+    return matches
+
+
+def build_combined_timeline(result, limit=500):
+    items=[]
+    for ev in result.get('normalized_events', []) or []:
+        items.append({'time': ev.get('timestamp') or '', 'kind': 'event', 'src': ev.get('src_ip') or ev.get('host') or '', 'dst': ev.get('dst_ip') or '', 'context': f"{ev.get('log_source','')} / {ev.get('event_type','')}", 'attack': ', '.join(ev.get('attack_candidates') or [])})
+    for f in result.get('flows', []) or []:
+        items.append({'time': f.get('first_seen') or '', 'kind': 'flow', 'src': f.get('src_ip') or '', 'dst': f.get('dst_ip') or '', 'context': f"{f.get('protocol','')}:{f.get('dport','')} packets={f.get('packets',0)} bytes={f.get('bytes',0)}", 'attack': ''})
+    for m in (result.get('rule_validations') or {}).get('matches', []) or []:
+        items.append({'time': m.get('timestamp') or '', 'kind': 'rule_match', 'src': m.get('src_ip') or '', 'dst': m.get('dst_ip') or '', 'context': m.get('rule') or '', 'attack': ', '.join(m.get('attack') or [])})
+    return sorted(items, key=lambda x: str(x.get('time','')))[:limit]
+
+@app.route('/events')
+def events_page():
+    result, jid = load_result(request.args.get('job'))
+    events = filter_normalized_events(result.get('normalized_events', []), request.args)
+    selected = None
+    event_id = request.args.get('event_id')
+    if event_id:
+        selected = next((e for e in result.get('normalized_events', []) if e.get('event_id') == event_id), None)
+    filters = {k: request.args.get(k, '') for k in ['q','platform','log_source','event_type','host','attack']}
+    unmapped = [e for e in events if not e.get('attack_candidates')]
+    return render_template('events.html', events=events, summary=result.get('normalized_event_summary', {}), job_id=jid, filters=filters, selected_event=selected, related_flows=related_flows_for_event(selected, result.get('flows', [])), unmapped=unmapped)
+
+@app.route('/events/export/<fmt>')
+def export_events(fmt):
+    result, jid = load_result(request.args.get('job'))
+    events = filter_normalized_events(result.get('normalized_events', []), request.args)
+    if fmt == 'json':
+        return send_file(BytesIO(json.dumps({'job_id': jid, 'events': events}, indent=2, default=str).encode()), as_attachment=True, download_name='normalized_events.json', mimetype='application/json')
+    if fmt == 'csv':
+        out = StringIO(); fields=['timestamp','platform','log_source','event_type','host','user','process','src_ip','dst_ip','attack_candidates','confidence','raw']
+        w=csv.DictWriter(out, fieldnames=fields); w.writeheader()
+        for e in events:
+            row=dict(e); row['attack_candidates']=', '.join(e.get('attack_candidates') or []); w.writerow({k: row.get(k,'') for k in fields})
+        return Response(out.getvalue(), mimetype='text/csv', headers={'Content-Disposition':'attachment; filename=normalized_events.csv'})
+    if fmt == 'md':
+        lines=['# Normalized Events','',f'Job: {jid or ""}','']
+        for e in events[:2000]:
+            lines.append(f"- **{e.get('event_type','')}** `{e.get('log_source','')}` host={e.get('host','')} ATT&CK={', '.join(e.get('attack_candidates') or [])}")
+        return send_file(BytesIO('\n'.join(lines).encode()), as_attachment=True, download_name='normalized_events.md', mimetype='text/markdown')
+    if fmt == 'ndjson':
+        buf=[]
+        for e in events:
+            buf.append(json.dumps({'index': {'_index': 'pcap-normalized-events'}})); buf.append(json.dumps(e, default=str))
+        return send_file(BytesIO(('\n'.join(buf)+'\n').encode()), as_attachment=True, download_name='normalized_events.ndjson', mimetype='application/x-ndjson')
+    abort(404)
+
+@app.route('/timeline')
+def timeline_page():
+    result, jid = load_result(request.args.get('job'))
+    return render_template('timeline.html', timeline=build_combined_timeline(result), job_id=jid)
+
+@app.route('/events/rule-from-event', methods=['POST'])
+def rule_from_event():
+    result, jid = load_result(request.form.get('job'))
+    event_id = request.form.get('event_id')
+    ev = next((e for e in result.get('normalized_events', []) if e.get('event_id') == event_id), None)
+    if not ev:
+        return redirect(url_for('events_page', job=jid))
+    attacks = ev.get('attack_candidates') or []
+    if not attacks:
+        return redirect(url_for('events_page', job=jid, event_id=event_id))
+    rule = {
+        'name': 'Event: ' + (ev.get('event_type') or ev.get('log_source') or 'Normalized Event'),
+        'description': 'Generated from normalized event evidence.',
+        'event_type': ev.get('event_type') or 'event',
+        'severity': 'medium',
+        'confidence': ev.get('confidence') or 'medium',
+        'version': '1.0',
+        'attack': attacks[:5],
+        'requires': [ev.get('log_source')] if ev.get('log_source') else [],
+    }
+    add_rule(rule)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('rules', job=jid))
+
+@app.route('/log-sources')
+def log_sources():
+    result,jid=load_result(request.args.get('job'))
+    telemetry = build_log_source_view(result)
+    return render_template('log_sources.html', result=result, job_id=jid, telemetry=telemetry)
+
+@app.route('/log-sources/export/<fmt>')
+def export_log_sources(fmt):
+    result,jid=load_result(request.args.get('job'))
+    telemetry = build_log_source_view(result)
+    rows = telemetry.get('rows', [])
+    if fmt == 'json':
+        payload = json.dumps({'job_id': jid, 'telemetry': telemetry}, indent=2, default=str).encode('utf-8')
+        return send_file(BytesIO(payload), as_attachment=True, download_name='telemetry_inventory.json', mimetype='application/json')
+    if fmt == 'csv':
+        out = StringIO()
+        writer = csv.DictWriter(out, fieldnames=['source','category','host','collector','protocol','port','confidence','status','technique_count','components','evidence','first_seen','last_seen'])
+        writer.writeheader()
+        for row in rows:
+            r = dict(row)
+            r['components'] = '; '.join(row.get('components', []))
+            writer.writerow({k: r.get(k, '') for k in writer.fieldnames})
+        return Response(out.getvalue(), mimetype='text/csv', headers={'Content-Disposition':'attachment; filename=telemetry_inventory.csv'})
+    abort(404)
+
+
+
+def build_legacy_heatmap_display(result, rules):
+    """Return a display-only result copy that uses the older bundled ATT&CK registry.
+
+    This does not alter the saved analysis. It only lets the MITRE Heat Map page
+    render the pre-STIX/legacy technique universe for users who want to compare
+    the old heat-map behavior with the official STIX-based behavior.
+    """
+    legacy = LEGACY_TECHNIQUES
+    out = dict(result or {})
+    out['techniques'] = [t for t in (out.get('techniques') or []) if (t.get('techniqueID') or t.get('technique_id')) in legacy]
+    ds = out.get('data_source_coverage') or build_data_source_coverage(out)
+    out['data_source_coverage'] = [t for t in ds if t.get('techniqueID') in legacy]
+    validated_items = out.get('validated_techniques') or (out.get('rule_validations') or {}).get('validated_techniques') or []
+    out['validated_techniques'] = [t for t in validated_items if t.get('techniqueID') in legacy]
+
+    observed = {t.get('techniqueID') or t.get('technique_id') for t in out.get('techniques', []) if (t.get('techniqueID') or t.get('technique_id')) in legacy}
+    covered = {t.get('techniqueID'): t for t in out.get('data_source_coverage', []) if t.get('techniqueID') in legacy}
+    validated = {t.get('techniqueID') for t in out.get('validated_techniques', []) if t.get('techniqueID') in legacy}
+    rule_techs = set()
+    for r in rules or []:
+        for tid in r.get('attack', []) or r.get('techniques', []) or []:
+            if tid in legacy:
+                rule_techs.add(tid)
+
+    # Apply the same detected OS/log-source scope to legacy display mode so
+    # legacy heat maps do not mark out-of-scope techniques as uncovered.
+    try:
+        coverage_scope = _detected_coverage_scope(out, detected_data_sources(out))
+        applicable_ids = {tid for tid, meta in legacy.items() if _technique_in_detected_scope(tid, meta, coverage_scope) or tid in observed or tid in covered or tid in validated}
+    except Exception:
+        coverage_scope = []
+        applicable_ids = set()
+
+    totals = {t: 0 for t in TACTIC_DISPLAY_ORDER}
+    counts = {t: 0 for t in TACTIC_DISPLAY_ORDER}
+    sums = {t: 0 for t in TACTIC_DISPLAY_ORDER}
+    for tid, meta in legacy.items():
+        if tid not in applicable_ids:
+            continue
+        tac = meta.get('tactic')
+        if tac in totals:
+            totals[tac] += 1
+            if tid in covered:
+                counts[tac] += 1
+                sums[tac] += float(covered[tid].get('score', 0))
+
+    tactic_coverage = []
+    for tac in TACTIC_DISPLAY_ORDER:
+        total = totals.get(tac, 0)
+        cnt = counts.get(tac, 0)
+        avg_strength = (sums.get(tac, 0) / cnt) if cnt else 0
+        coverage_pct = round((cnt / total) * 100, 1) if total else 0
+        effective_score = round((coverage_pct * 0.65) + (avg_strength * 0.35), 1) if total else 0
+        tactic_coverage.append({'tactic': tac, 'name': tac.replace('-', ' ').title(), 'covered': cnt, 'total': total, 'coverage_pct': coverage_pct, 'avg_strength': round(avg_strength, 1), 'score': effective_score})
+
+    coverage_states = []
+    for tid, meta in legacy.items():
+        applicable = tid in applicable_ids
+        is_obs = tid in observed
+        is_cov = tid in covered
+        score = covered[tid].get('score', 0) if is_cov else 0
+        if not applicable:
+            state = 'Not Applicable'
+            score = 0
+        elif is_obs and is_cov and tid in validated:
+            state = 'Validated'
+        elif is_obs and is_cov:
+            state = 'Observed + Covered'
+        elif is_obs:
+            state = 'Observed Only'
+        elif is_cov and score >= 70:
+            state = 'Covered'
+        elif is_cov:
+            state = 'Partially Covered'
+        elif tid in rule_techs:
+            state = 'Detectable'
+        else:
+            state = 'Not Covered'
+        coverage_states.append({'techniqueID': tid, 'name': meta.get('name', tid), 'tactic': meta.get('tactic', ''), 'state': state, 'score': score, 'rule': tid in rule_techs, 'validated': tid in validated, 'applicable': applicable})
+
+    known_total = len(applicable_ids)
+    covered_total = len([tid for tid in covered if tid in applicable_ids])
+    avg_strength = sum(float(covered[tid].get('score', 0)) for tid in covered if tid in applicable_ids) / covered_total if covered_total else 0
+    breadth = (covered_total / known_total) * 100 if known_total else 0
+    overall = round((breadth * 0.65) + (avg_strength * 0.35), 1) if known_total else 0
+    ec = dict(out.get('enterprise_coverage') or {})
+    ec.update({
+        'basis': 'legacy heat-map processing',
+        'attack_version': 'legacy bundled registry',
+        'overall_score': overall,
+        'maturity': 'High' if overall >= 75 else 'Moderate' if overall >= 55 else 'Basic' if overall >= 30 else 'Limited',
+        'coverage_scope': coverage_scope,
+        'scoped_technique_total': known_total,
+        'not_applicable_count': len(legacy) - known_total,
+        'tactic_coverage': tactic_coverage,
+        'coverage_states': coverage_states,
+        'rule_coverage': {'techniques_with_rules': len(rule_techs), 'covered_with_rules': len([tid for tid in covered if tid in rule_techs]), 'detectable_without_rules': max(0, covered_total - len([tid for tid in covered if tid in rule_techs])), 'validated_techniques': len(validated)},
+        'executive_summary': 'Legacy heat-map processing is selected. This view uses the older bundled ATT&CK registry and legacy rollup behavior for comparison with the official STIX-based mode.',
+    })
+    out['enterprise_coverage'] = ec
+    return out
+
+@app.route('/mitre')
+def mitre():
+    result,jid=load_result(request.args.get('job'))
+    attack_mode = (request.args.get('attack_mode') or 'stix').lower()
+    if attack_mode not in ('stix', 'legacy'):
+        attack_mode = 'stix'
+    rules = load_rules()
+    # Recompute these display-only structures on page load so Observed and
+    # Theoretical tactic coverage do not depend on deferred rule validation or
+    # stale cached enterprise_coverage from an older analysis run.
+    result['data_source_coverage'] = result.get('data_source_coverage') or build_data_source_coverage(result)
+    if attack_mode == 'legacy':
+        result = build_legacy_heatmap_display(result, rules)
+    else:
+        result['enterprise_coverage'] = enterprise_coverage_assessment(result, rules)
+    tactic_rollups = build_tactic_rollups(result, rules, attack_mode=attack_mode)
+    result['attack_pipeline_diagnostics'] = attack_pipeline_diagnostics(result, result.get('rule_validations'), rules)
+    return render_template('mitre.html', result=result, job_id=jid, tactic_rollups=tactic_rollups, attack_mode=attack_mode)
+
+@app.route('/rules', methods=['GET','POST'])
+def rules():
+    result,jid=load_result(request.args.get('job'))
+    preview=None; errors=None
+    if request.method == 'POST':
+        rule=rule_from_form(request.form)
+        action=request.form.get('action','add')
+        if action == 'preview':
+            preview = preview_rule(rule, result)
+        else:
+            ok, errors = add_rule(rule)
+            if ok:
+                mark_validation_stale('Rules changed; validation should be re-run.')
+                return redirect(url_for('rules'))
+    return render_template('rules.html', rules=load_rules(), result=result, job_id=jid, validation=result.get('rule_validations'), errors=errors, preview=preview, conflicts=rule_conflicts(load_rules()), history=load_rule_history(), templates=rule_templates())
+
+
+@app.route('/network-rules', methods=['GET','POST'])
+def network_rules():
+    result,jid=load_result(request.args.get('job'))
+    preview=None; errors=None
+    if request.method == 'POST':
+        rule=rule_from_form(request.form, network=True)
+        action=request.form.get('action','add')
+        if action == 'preview':
+            preview = preview_rule(rule, result)
+        else:
+            ok, errors = add_rule(rule)
+            if ok:
+                mark_validation_stale('Rules changed; validation should be re-run.')
+                return redirect(url_for('network_rules'))
+    rules=[r for r in load_rules() if r.get('rule_type') == 'network' or r.get('event_type') in ['flow','dns','icmp','http','tls','network']]
+    return render_template('network_rules.html', rules=rules, result=result, job_id=jid, validation=result.get('rule_validations'), errors=errors, preview=preview, conflicts=rule_conflicts(rules), history=load_rule_history(), templates=rule_templates())
+
+
+
+
+
+@app.route('/rules/<rule_id>/delete', methods=['POST'])
+def delete_detection_rule(rule_id):
+    delete_rule(rule_id)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('rules'))
+
+@app.route('/rules/<rule_id>/toggle', methods=['POST'])
+def toggle_detection_rule(rule_id):
+    enabled = request.form.get('enabled') == '1'
+    set_rule_enabled(rule_id, enabled)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('rules'))
+
+@app.route('/network-rules/<rule_id>/delete', methods=['POST'])
+def delete_network_rule(rule_id):
+    delete_rule(rule_id)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('network_rules'))
+
+@app.route('/network-rules/<rule_id>/toggle', methods=['POST'])
+def toggle_network_rule(rule_id):
+    enabled = request.form.get('enabled') == '1'
+    set_rule_enabled(rule_id, enabled)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('network_rules'))
+
+@app.route('/api/rule-validation/<job_id>')
+def api_rule_validation_status(job_id):
+    result, jid = load_result(job_id)
+    summary = (result.get('rule_validations') or {}).get('summary', {})
+    return jsonify({
+        'job_id': jid,
+        'status': result.get('rule_validation_status', 'not_run'),
+        'progress': int(result.get('rule_validation_progress', 0) or 0),
+        'message': result.get('rule_validation_message', 'Rule validation has not been run yet.'),
+        'summary': summary,
+    })
+
+@app.route('/rules/validate', methods=['POST'])
+def validate_rules_now():
+    jid = start_rule_validation_for_job(request.form.get('job') or None)
+    return redirect(url_for('rules', job=jid) if jid else url_for('rules'))
+
+@app.route('/network-rules/validate', methods=['POST'])
+def validate_network_rules_now():
+    jid = start_rule_validation_for_job(request.form.get('job') or None)
+    return redirect(url_for('network_rules', job=jid) if jid else url_for('network_rules'))
+
+@app.route('/mitre/validate', methods=['POST'])
+def validate_rules_from_mitre():
+    attack_mode = (request.form.get('attack_mode') or request.args.get('attack_mode') or 'stix').lower()
+    if attack_mode not in ('stix', 'legacy'):
+        attack_mode = 'stix'
+    jid = start_rule_validation_for_job(request.form.get('job') or None)
+    return redirect(url_for('mitre', job=jid, attack_mode=attack_mode) if jid else url_for('mitre', attack_mode=attack_mode))
+
+
+@app.route('/rules/template/<int:index>', methods=['POST'])
+def add_rule_template(index):
+    items = rule_templates()
+    if index < 0 or index >= len(items): abort(404)
+    add_rule(items[index])
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('rules'))
+
+@app.route('/network-rules/template/<int:index>', methods=['POST'])
+def add_network_rule_template(index):
+    items = rule_templates()
+    if index < 0 or index >= len(items): abort(404)
+    rule = dict(items[index]); rule['rule_type']='network'
+    add_rule(rule)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('network_rules'))
+
+@app.route('/rules/export')
+def export_rule_pack():
+    path = export_rules()
+    return send_file(path, as_attachment=True, download_name='pcap_mapper_rule_pack.json')
+
+@app.route('/rules/import', methods=['POST'])
+def import_rule_pack():
+    f=request.files.get('rule_pack')
+    if not f or not f.filename:
+        return redirect(url_for('rules'))
+    path=UPLOAD_DIR / f'rule_import_{uuid.uuid4().hex}.json'
+    f.save(path)
+    import_rules_from_file(path)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('rules'))
+
+@app.route('/network-rules/import', methods=['POST'])
+def import_network_rule_pack():
+    f=request.files.get('rule_pack')
+    if not f or not f.filename:
+        return redirect(url_for('network_rules'))
+    path=UPLOAD_DIR / f'rule_import_{uuid.uuid4().hex}.json'
+    f.save(path)
+    import_rules_from_file(path)
+    mark_validation_stale('Rules changed; validation should be re-run.')
+    return redirect(url_for('network_rules'))
+
+@app.route('/rules/guide')
+def rule_guide():
+    return render_template('rule_guide.html')
+
+@app.route('/reports')
+def reports():
+    jobs=list_jobs()
+    return render_template('reports.html', jobs=jobs)
+
+
+@app.route('/reports/<job_id>/generate', methods=['POST'])
+def generate_job_reports(job_id):
+    result, _ = load_result(job_id)
+    generate_reports(job_id, result, None)
+    _update(job_id, reports_generated=True, reports_generated_at=__import__('time').time(), message='Reports generated on demand')
+    return redirect(url_for('reports'))
+
+@app.route('/previous')
+def previous():
+    return render_template('previous.html', jobs=list_jobs())
+
+@app.route('/previous/<job_id>/delete', methods=['POST'])
+def delete_previous_result(job_id):
+    delete_job(job_id)
+    return redirect(url_for('previous'))
+
+@app.route('/download/<job_id>/<kind>/<path:name>')
+def download(job_id, kind, name):
+    base = {'report': REPORT_DIR/job_id, 'export': EXPORT_DIR/job_id, 'result': RESULT_DIR/job_id}.get(kind)
+    if not base: abort(404)
+    path=(base/name).resolve()
+    if not str(path).startswith(str(base.resolve())) or not path.exists(): abort(404)
+    return send_file(path, as_attachment=True)

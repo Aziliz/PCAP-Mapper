@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% block body %}
+<h2>Telemetry · Environment Profile</h2>
+
+<section class="card">
+  <h3>Environment Profile</h3>
+  <p class="muted">Profiles are auto-selected from observed telemetry in the active job. They do not change evidence; they help prioritize plugin validation, gap recommendations, and the telemetry categories most relevant to the environment.</p>
+  <div class="summary-grid">
+    <div><b>Auto-selected profile</b><br><span class="pill telemetry-profile-selected">{{ profile_assessment.selected }}</span></div>
+    <div><b>Active job</b><br>{{ active_profile_job_id or 'No active job' }}</div>
+    <div><b>Observed categories</b><br>{{ profile_assessment.observed_categories|join(', ') if profile_assessment.observed_categories else 'None detected yet' }}</div>
+    <div><b>Matched plugins</b><br>{{ profile_assessment.observed_plugins|length }}</div>
+  </div>
+  {% if not has_active_dataset %}
+  <p class="muted">No parsed dataset is active yet. Profile auto-selection will populate after a job finishes parsing and telemetry has been detected.</p>
+  {% endif %}
+
+  {% if profile_assessment.observed_plugins %}
+  <details class="mini-card">
+    <summary><b>Observed telemetry used for profile selection</b></summary>
+    <div class="telemetry-component-scroll">
+      <ul>
+        {% for p in profile_assessment.observed_plugins %}
+        <li><b>{{ p.name }}</b> <span class="pill telemetry-category-pill">{{ p.category }}</span><br><small>Matched aliases: {{ p.matched_aliases|join(', ') }}</small></li>
+        {% endfor %}
+      </ul>
+    </div>
+  </details>
+  {% endif %}
+
+  <h4>Profile ranking</h4>
+  {% if profile_assessment.ranked %}
+  <div class="grid telemetry-profile-grid">
+    {% for r in profile_assessment.ranked %}
+    <details class="mini-card telemetry-profile-card {% if r.name == profile_assessment.selected %}telemetry-profile-active{% endif %}" {% if loop.first %}open{% endif %}>
+      <summary><b>{{ r.name }}</b> <span class="pill">Score {{ r.score }}</span></summary>
+      <p>{{ r.description }}</p>
+      <p><b>Categories:</b> {{ r.categories|join(', ') }}</p>
+      <p><b>Matched categories:</b> {{ r.matched_categories|join(', ') if r.matched_categories else 'None' }}</p>
+      <p><b>Matched plugins:</b> {{ r.matched_plugins|join(', ') if r.matched_plugins else 'None' }}</p>
+      <p><b>Matched signals:</b> {{ r.matched_signals|join(', ') if r.matched_signals else 'None' }}</p>
+      <p><b>Priority plugins:</b> {{ r.recommended_plugins|join(', ') }}</p>
+    </details>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p>No profile ranking is available until telemetry is observed.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h3>Profile Definitions</h3>
+  <div class="grid telemetry-profile-grid">
+    {% for name,prof in profiles.items() %}
+    <div class="mini-card">
+      <b>{{ name }}</b>
+      <p>{{ prof.description }}</p>
+      <p><b>Categories:</b> {{ prof.categories|join(', ') }}</p>
+      <p><b>Recommended plugins:</b>
+        {% for rp in prof.recommended_plugins %}
+          <span class="pill {{ 'telemetry-enabled' if rp.enabled else 'telemetry-disabled' }}">{{ rp.name }}</span>
+        {% endfor %}
+      </p>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

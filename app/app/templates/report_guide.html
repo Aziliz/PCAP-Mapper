@@ -1,0 +1,163 @@
+{% extends 'base.html' %}{% block body %}
+<section class="card report-guide"><h2>Report Guide</h2>
+  <p class="muted">This page is the single source of documentation for PCAP Mapper reports. The Reports page is intentionally a clean launcher; use this guide to decide which export to generate, which files can be imported into MITRE ATT&CK Navigator, and which files are internal PCAP Mapper data.</p>
+  <p><a class="btn" href="/reports">Back to Reports</a></p>
+
+  <section class="card report-guide-search-card">
+    <label for="reportGuideSearch"><b>Search reports</b></label>
+    <input id="reportGuideSearch" class="report-guide-search" type="search" placeholder="Search by report name, purpose, contents, or use case...">
+    <p id="reportGuideSearchStatus" class="muted">Showing all report guide entries.</p>
+  </section>
+
+  <section class="card"><h3>Recommended report workflow</h3>
+    <p><b>1. Finish analysis.</b> Upload PCAPs or compressed capture archives and wait for upload, decompression, parsing, and event normalization to complete.</p>
+    <p><b>2. Review MITRE coverage.</b> Check Coverage, Data Sources, and Normalized Events pages to understand observed evidence, theoretical telemetry capability, detectable rule coverage, and validated rule matches.</p>
+    <p><b>3. Run Validate Rules.</b> If you need validated ATT&CK coverage, run rule validation before generating reports.</p>
+    <p><b>4. Generate or refresh reports.</b> Reports are generated from the saved job result, selected ATT&CK source, analysis mode, normalized events, rule validation results, and environment-scoped coverage model.</p>
+    <p><b>5. Choose the right output.</b> Use HTML/Markdown for human review, CSV/NDJSON for data handling, Navigator layers for MITRE ATT&CK Navigator, and Other Reports for diagnostics or integration.</p>
+  </section>
+
+  <section class="card"><h3>MITRE ATT&CK Navigator compatibility</h3>
+    <p>Only files explicitly labeled <b>Navigator Layer</b> are intended to be imported into MITRE ATT&CK Navigator. These files use the Navigator layer JSON structure and include layer metadata such as domain, ATT&CK version, Navigator version, layer version, gradient/color metadata, and a techniques array.</p>
+    <p><b>Do not import</b> Enterprise Coverage JSON or Unified ATT&CK Coverage Model JSON into Navigator. Those files are PCAP Mapper application data, not Navigator layers, and Navigator will show layer-version warnings if you try to upload them.</p>
+    <p>Navigator layers are useful for visual review in ATT&CK Navigator. Application JSON reports are useful for debugging, integrations, audit evidence, and understanding exactly how PCAP Mapper calculated coverage.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>HTML Report</h3>
+    <p><b>Purpose:</b> Primary human-readable investigation report for browser review.</p>
+    <p><b>Contents:</b> Analysis configuration, ATT&CK source and mode, environment-scoped coverage summary, coverage-by-tactic rollups, findings, assets, top communications, normalized event evidence, rule-validation evidence, coverage gaps, telemetry recommendations, and report metadata.</p>
+    <p><b>Use when:</b> You need a complete analyst-friendly summary to brief a team, review an analysis, or attach to a case.</p>
+    <p><b>Do not use for:</b> Machine ingestion.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Markdown Report</h3>
+    <p><b>Purpose:</b> Plain-text version of the main report for tickets, documentation systems, Git repositories, and analyst notes.</p>
+    <p><b>Contents:</b> Same core information as the HTML report, formatted as Markdown sections and bullet lists.</p>
+    <p><b>Use when:</b> You need a portable report that can be pasted into a ticket, wiki, README, incident note, or version-controlled case file.</p>
+    <p><b>Do not use for:</b> Structured analytics.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Hosts CSV</h3>
+    <p><b>Purpose:</b> Spreadsheet-friendly asset inventory discovered from the analyzed PCAPs and normalized telemetry.</p>
+    <p><b>Contents:</b> Host IPs, MAC addresses when available, inferred roles, byte counts, protocols, and first/last seen timestamps.</p>
+    <p><b>Use when:</b> You need to review assets, sort by activity, compare hosts, or import asset evidence into another workflow.</p>
+    <p><b>Do not use for:</b> Full event evidence.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Flows CSV</h3>
+    <p><b>Purpose:</b> Spreadsheet-friendly communication summary.</p>
+    <p><b>Contents:</b> Source IP, destination IP, protocol, destination port, packet counts, byte counts, and first/last seen timestamps.</p>
+    <p><b>Use when:</b> You need to investigate top talkers, find large transfers, pivot into communications, or validate network-based evidence.</p>
+    <p><b>Do not use for:</b> Endpoint-event review or rule diagnostics.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Events CSV</h3>
+    <p><b>Purpose:</b> Spreadsheet-friendly normalized event export.</p>
+    <p><b>Contents:</b> Parsed event timestamp, platform, log source, event type, host, user, process, source/destination IPs, ATT&CK candidates, confidence, and raw payload excerpt.</p>
+    <p><b>Use when:</b> Forwarded logs were present in the PCAP and you need to inspect Windows, Linux, macOS, network, or cloud telemetry recovered from capture payloads.</p>
+    
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Elastic NDJSON</h3>
+    <p><b>Purpose:</b> Line-delimited JSON export for downstream search/analytics pipelines.</p>
+    <p><b>Contents:</b> Hosts, flows, findings, log sources, techniques, and normalized events in index/action pairs suitable for Elastic-style bulk ingestion workflows.</p>
+    <p><b>Use when:</b> You want to push PCAP Mapper evidence into a search platform, SIEM lab, or offline analytics process.</p>
+    
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Observed Navigator Layer</h3>
+    <p><b>Purpose:</b> ATT&CK Navigator layer showing techniques directly evidenced by PCAP traffic and normalized events.</p>
+    <p><b>Contents:</b> Navigator-compatible technique entries, scores/colors, comments, and layer metadata for the observed portion of the analysis.</p>
+    <p><b>Use when:</b> You want to open the directly observed ATT&CK evidence in MITRE ATT&CK Navigator.</p>
+    <p><b>Important:</b> Observed coverage should be conservative. It should represent what the analyzed PCAPs and parsed events actually support, not everything the environment might detect.</p>
+    <p><b>Navigator importable:</b> Yes.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Unified Coverage Navigator Layer</h3>
+    <p><b>Purpose:</b> ATT&CK Navigator layer showing the environment-scoped unified coverage state for each applicable technique.</p>
+    <p><b>Contents:</b> Observed, theoretical, detectable, partial, not-covered, and not-applicable states represented with Navigator-compatible colors and comments. Validation status is included as metadata/evidence rather than as a separate overlay color.</p>
+    <p><b>Use when:</b> You want a single Navigator view that aligns with the Environment-Scoped Coverage Overlay in the application.</p>
+    <p><b>Important:</b> Gray/not-applicable techniques are outside the detected OS/log-source scope and are excluded from coverage denominators.</p>
+    <p><b>Navigator importable:</b> Yes.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Theoretical Coverage Navigator Layer</h3>
+    <p><b>Purpose:</b> ATT&CK Navigator layer focused on what the enterprise should be able to detect based on detected log sources mapped through ATT&CK data-source metadata.</p>
+    <p><b>Contents:</b> Detected-log-source telemetry coverage, ATT&CK data-source-derived technique coverage, not-applicable handling, and Navigator metadata.</p>
+    <p><b>Use when:</b> You want to review detection capability rather than confirmed activity.</p>
+    <p><b>Important:</b> This layer is not proof that an attack occurred. It describes detection opportunity based on telemetry presence.</p>
+    <p><b>Navigator importable:</b> Yes.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Enterprise Coverage JSON</h3>
+    <p><b>Purpose:</b> PCAP Mapper internal enterprise coverage assessment.</p>
+    <p><b>Contents:</b> Overall scoped score, maturity, detected coverage scope, scoped denominator, gaps, and telemetry recommendations based on detected OSes and log sources.</p>
+    <p><b>Use when:</b> You need to debug coverage scoring, feed another integration, or audit why the UI recommended certain telemetry improvements.</p>
+    
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Unified ATT&CK Coverage Model JSON</h3>
+    <p><b>Purpose:</b> Complete PCAP Mapper coverage model for all ATT&CK techniques in the loaded dataset.</p>
+    <p><b>Contents:</b> Technique ID, technique name, tactic, applicability, observed status, theoretical status, detectable status, partial/not-covered/not-applicable state, rule presence, validation metadata, evidence, confidence, rollups, and counts.</p>
+    <p><b>Use when:</b> You need to inspect exactly why the heat map looks the way it does, compare UI/report behavior, or build an external integration around PCAP Mapper coverage decisions.</p>
+    
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+
+
+  <section class="card report-guide-item"><h3>Potential ATT&CK Coverage Assessment</h3>
+    <p><b>Purpose:</b> Human-readable report explaining potential ATT&CK coverage available from detected telemetry products if their richer event types, protocol logs, and forwarding options are fully enabled.</p>
+    <p><b>Contents:</b> Observed telemetry coverage, potential coverage, potential increase, detected log sources, per-source observed components, per-source potential components, sample additional techniques, and configuration recommendations.</p>
+    <p><b>Use when:</b> You want to understand how to increase realistic theoretical coverage without falling back to generic operating-system assumptions.</p>
+    <p><b>Do not use for:</b> Proof that an attack occurred. Potential coverage describes detection opportunity, not observed adversary behavior.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Rule Validation JSON</h3>
+    <p><b>Purpose:</b> Explains which Detection Rules and Network Rules matched evidence.</p>
+    <p><b>Contents:</b> Rule-validation status, validated techniques, matching rules, rule evidence, and validation details created by the rule engine.</p>
+    <p><b>Use when:</b> You need to understand why a technique is considered validated or troubleshoot why a rule did not validate a technique.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <section class="card report-guide-item"><h3>Event Diagnostics JSON</h3>
+    <p><b>Purpose:</b> Troubleshooting export for the Event Normalization Engine.</p>
+    <p><b>Contents:</b> Normalized event summary, mapped events, and a capped list of unmapped events.</p>
+    <p><b>Use when:</b> You need to determine whether forwarded logs were parsed correctly, why expected ATT&CK mappings did not appear, or which parsers need improvement.</p>
+    <p><b>Navigator importable:</b> No.</p>
+  </section>
+
+  <p><a class="btn" href="/reports">Back to Reports</a></p>
+</section>{% endblock %}
+{% block scripts %}
+<script>
+(function(){
+  const input=document.getElementById('reportGuideSearch');
+  const status=document.getElementById('reportGuideSearchStatus');
+  const items=[...document.querySelectorAll('.report-guide-item')];
+  if(!input || !items.length) return;
+  function apply(){
+    const q=(input.value || '').trim().toLowerCase();
+    let shown=0;
+    items.forEach(item=>{
+      const text=item.textContent.toLowerCase();
+      const match=!q || text.includes(q);
+      item.style.display=match ? '' : 'none';
+      if(match) shown++;
+    });
+    if(status) status.textContent=q ? `Showing ${shown} matching report${shown===1?'':'s'}.` : 'Showing all report guide entries.';
+  }
+  input.addEventListener('input', apply);
+  apply();
+})();
+</script>
+{% endblock %}
+

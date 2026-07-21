@@ -1,0 +1,84 @@
+{% extends 'base.html' %}{% block body %}
+<section class="card">
+  <h2>Rule Writing Guide</h2>
+  <p class="muted">Use Detection Rules and Network Rules to validate ATT&CK techniques against the current analysis. A technique is treated as <b>Validated</b> when the PCAP evidence matches a rule that maps to that ATT&CK ID.</p>
+</section>
+
+<section class="card">
+  <h3>Rule Fields</h3>
+  <table>
+    <tr><th>Field</th><th>Purpose</th><th>Example</th></tr>
+    <tr><td>Name</td><td>Human-readable rule title.</td><td>Possible SMB Lateral Movement</td></tr>
+    <tr><td>Description</td><td>What the rule is trying to prove.</td><td>SMB traffic to administrative services after authentication activity.</td></tr>
+    <tr><td>Event Type</td><td>The normalized event type to match.</td><td>flow, dns, icmp, http, tls</td></tr>
+    <tr><td>Protocol</td><td>Protocol or service name to match.</td><td>SMB, DNS, HTTP, SSH, RDP</td></tr>
+    <tr><td>Port</td><td>Destination or service port to match.</td><td>445, 53, 22, 3389</td></tr>
+    <tr><td>Severity</td><td>Finding priority if the rule matches.</td><td>medium, high, critical</td></tr>
+    <tr><td>ATT&CK IDs</td><td>Comma-separated techniques validated by the rule.</td><td>T1021.002,T1046</td></tr>
+  </table>
+</section>
+
+<section class="card">
+  <h3>Simple Detection Rule Examples</h3>
+  <pre>Rule: SMB Lateral Movement
+Event Type: flow
+Protocol: SMB
+Port: 445
+Severity: high
+ATT&CK IDs: T1021.002</pre>
+  <pre>Rule: RDP Remote Services
+Event Type: flow
+Protocol: RDP
+Port: 3389
+Severity: high
+ATT&CK IDs: T1021.001</pre>
+  <pre>Rule: SSH Remote Services
+Event Type: flow
+Protocol: SSH
+Port: 22
+Severity: medium
+ATT&CK IDs: T1021.004</pre>
+</section>
+
+<section class="card">
+  <h3>Network Rule Examples</h3>
+  <pre>Rule: DNS Tunneling Candidate
+Event Type: dns
+Protocol: DNS
+Port: 53
+Severity: high
+ATT&CK IDs: T1071.004</pre>
+  <pre>Rule: HTTPS Command and Control
+Event Type: flow
+Protocol: HTTPS
+Port: 443
+Severity: medium
+ATT&CK IDs: T1071.001</pre>
+  <pre>Rule: Network Service Discovery
+Event Type: flow
+Protocol: TCP
+Severity: medium
+ATT&CK IDs: T1046</pre>
+</section>
+
+<section class="card">
+  <h3>How Rules Validate ATT&CK Coverage</h3>
+  <ol>
+    <li>The parser turns packets into normalized events and flows.</li>
+    <li>Rules are evaluated against those events.</li>
+    <li>If a rule matches and includes ATT&CK IDs, those techniques are marked as rule-supported.</li>
+    <li>If the technique is also observed in the PCAP and telemetry coverage exists, the heat map can classify it as <b>Validated</b>.</li>
+  </ol>
+</section>
+
+<section class="card">
+  <h3>Tips for Better Rules</h3>
+  <ul>
+    <li>Prefer specific protocols and ports when possible.</li>
+    <li>Map rules only to techniques that the evidence actually supports.</li>
+    <li>Use higher severity for behavior that is unusual in your environment.</li>
+    <li>Keep broad rules informational or medium severity to avoid noisy results.</li>
+    <li>Use the Communications page to confirm which flows matched your rule.</li>
+  </ul>
+</section>
+{% endblock %}

@@ -1,0 +1,26 @@
+{% extends 'base.html' %}{% block body %}
+{% set ec = result.get('enterprise_coverage', {}) or {} %}
+{% set diag = ec.get('theoretical_diagnostics', {}) or {} %}
+<section class="card mitre-page">
+  <h2>MITRE ATT&CK Data Sources</h2>
+  <div class="button-row mitre-subnav"><a class="btn" href="/mitre/coverage{% if job_id %}?job={{ job_id }}&attack_mode={{ attack_mode or 'stix' }}&coverage_engine={{ coverage_engine or 'stix' }}&attack_version={{ attack_version or '18' }}{% endif %}">Coverage</a><a class="btn" href="/mitre/data-sources{% if job_id %}?job={{ job_id }}&attack_mode={{ attack_mode or 'stix' }}&coverage_engine={{ coverage_engine or 'stix' }}&attack_version={{ attack_version or '18' }}{% endif %}">Data Sources</a><a class="btn" href="/mitre/normalized-events{% if job_id %}?job={{ job_id }}&attack_mode={{ attack_mode or 'stix' }}&coverage_engine={{ coverage_engine or 'stix' }}&attack_version={{ attack_version or '18' }}{% endif %}">Normalized Events</a></div>
+
+  <section class="card"><h3>Enterprise Telemetry Inventory</h3><p class="muted">Detected log sources and telemetry components define the applicable ATT&CK scope used by the heat maps and reports.</p><div class="grid">{% for category, sources in (ec.get('telemetry_inventory', {}) or {}).items() %}<div class="card"><h3>{{ category }}</h3>{% for src in sources %}<span class="pill">{{ src }}</span>{% else %}<p class="muted">Not detected</p>{% endfor %}</div>{% endfor %}</div></section>
+
+  <section class="card"><h3>Theoretical Coverage Diagnostics</h3>
+    <p class="muted">This panel shows the theoretical coverage expansion path: detected log sources → ATT&amp;CK STIX data components/data sources → supported ATT&amp;CK techniques → unified coverage model → heat maps, reports, and Navigator exports.</p>
+    <div class="grid">
+      <div class="card"><h3>Detected OS / Scope</h3>{% for scope in diag.get('detected_os_scope', []) %}<span class="pill">{{ scope }}</span>{% else %}<p class="muted">No OS/log scope detected. With no data loaded, all techniques are Not Applicable.</p>{% endfor %}</div>
+      <div class="card"><h3>Detected Log Sources</h3><p class="metric">{{ (diag.get('detected_log_sources', []) or [])|length }}</p><p class="muted">Specific sources detected inside syslog/514, Beats-like traffic, normalized events, and the log-source inventory.</p></div>
+      <div class="card"><h3>Expanded Components</h3><p class="metric">{{ (diag.get('components', []) or [])|length }}</p><p class="muted">ATT&amp;CK data components inferred from the detected sources.</p></div><div class="card"><h3>ATT&amp;CK Data Sources</h3><p class="metric">{{ (diag.get('attack_data_sources', []) or [])|length }}</p><p class="muted">Data-source families derived from mapped components.</p></div>
+      <div class="card"><h3>Theoretical Techniques</h3><p class="metric">{{ diag.get('theoretical_technique_count', 0) }} / {{ diag.get('applicable_technique_count', 0) }}</p><p class="muted">Theoretical techniques written into the unified coverage model for the current applicable scope.</p></div>
+    </div>
+    <details class="card" open><summary><strong>Pipeline</strong></summary><ol>{% for step in diag.get('pipeline', []) %}<li>{{ step }}</li>{% else %}<li>No diagnostics generated yet.</li>{% endfor %}</ol></details>
+    <h4>Detected Log Source STIX Expansion</h4>
+    <table><tr><th>Source / Capability</th><th>Category</th><th>Basis</th><th>Confidence</th><th>Inferred</th><th>Data Components</th><th>ATT&amp;CK Data Sources</th><th>Supported Techniques</th><th>Sample Technique IDs</th></tr>{% for row in diag.get('source_rows', []) %}<tr><td>{{ row.get('source') }}</td><td>{{ row.get('category') }}</td><td>{{ row.get('basis') }}</td><td>{{ row.get('confidence') }}</td><td>{{ 'yes' if row.get('inferred') else 'no' }}</td><td>{{ (row.get('components', []) or [])|join(', ') }}</td><td>{{ (row.get('attack_data_sources', []) or [])|join(', ') }}</td><td>{{ row.get('technique_count', 0) }}</td><td>{{ (row.get('sample_techniques', []) or [])|join(', ') }}</td></tr>{% else %}<tr><td colspan="9">No telemetry capability expansion is available yet.</td></tr>{% endfor %}</table>
+    <h4>Diagnostics for Unmapped Logs</h4><table><tr><th>Detected Log Source</th><th>Reason not mapped</th><th>Suggested parser</th><th>Suggested ATT&amp;CK Data Component</th></tr>{% for row in diag.get('unmapped_details', []) %}<tr><td>{{ row.get('source') }}</td><td>{{ row.get('reason') }}</td><td>{{ row.get('suggested_parser') }}</td><td>{{ row.get('suggested_attack_data_component') }}</td></tr>{% else %}<tr><td colspan="4" class="muted">All detected log sources have component/technique mappings.</td></tr>{% endfor %}</table>
+  </section>
+
+  <section class="card"><h3>ATT&CK Data Sources / Components</h3><table><tr><th>Data Component</th><th>Contributing Telemetry</th></tr>{% for row in ec.get('data_components', []) %}<tr><td>{{ row.get('component') }}</td><td>{{ (row.get('sources', []) or [])|join(', ') }}</td></tr>{% else %}<tr><td colspan="2">No data components identified.</td></tr>{% endfor %}</table></section>
+</section>
+{% endblock %}

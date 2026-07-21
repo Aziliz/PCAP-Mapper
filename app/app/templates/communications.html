@@ -1,0 +1,301 @@
+{% extends 'base.html' %}
+{% block body %}
+<section class="card">
+  <h2>Communications</h2>
+  <p class="muted">Search, filter, select, inspect, bookmark, annotate, and export communications from the current analysis.</p>
+
+  <div class="comm-filters">
+    <input id="q" placeholder="search IP, hostname, protocol, port, flow ID, rule, ATT&CK" oninput="applyFilters()">
+    <input id="src" placeholder="source" oninput="applyFilters()">
+    <input id="dst" placeholder="destination" oninput="applyFilters()">
+    <select id="proto" onchange="applyFilters()">
+      <option value="">Any protocol</option>
+    </select>
+    <input id="port" placeholder="port" oninput="applyFilters()">
+    <input id="minPackets" type="number" min="0" placeholder="min packets" oninput="applyFilters()">
+    <input id="minBytes" type="number" min="0" placeholder="min bytes" oninput="applyFilters()">
+    <select id="outcome" onchange="applyFilters()">
+      <option value="">Any outcome</option>
+      <option value="rule">Rule matched</option>
+      <option value="attack">ATT&CK mapped</option>
+      <option value="validated">Validated</option>
+      <option value="external">External communication</option>
+      <option value="internal">Internal communication</option>
+      <option value="suspicious">Suspicious / high risk</option>
+    </select>
+  </div>
+
+  <div class="button-row">
+    <button type="button" onclick="exportSelected('json')">Export Selected JSON</button>
+    <button type="button" onclick="exportSelected('csv')">Export Selected CSV</button>
+    <button type="button" onclick="clearSelection()">Clear Selection</button>
+    <span class="muted" id="flowCount"></span>
+  </div>
+</section>
+
+<section class="comm-layout">
+  <div class="card comm-table-card">
+    <h3>Flow Explorer</h3>
+    <table id="t">
+      <thead>
+        <tr>
+          <th><input type="checkbox" id="selectAll" onchange="toggleSelectAll(this.checked)"></th>
+          <th>Source</th><th>Destination</th><th>Protocol</th><th>Port</th><th>Packets</th><th>Bytes</th><th>Risk</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in result.get('flows', []) or [] %}
+          {% set fid = f.get('flow_id') or (f.get('src_ip','') ~ '|' ~ f.get('dst_ip','') ~ '|' ~ f.get('protocol','') ~ '|' ~ f.get('dport','')) %}
+          <tr id="flow-{{ loop.index }}" data-index="{{ loop.index0 }}" data-flow-id="{{ fid }}">
+            <td><input type="checkbox" class="flow-select" onclick="event.stopPropagation(); updateSelectionCount();"></td>
+            <td>{{ f.get('src_ip','') }}</td>
+            <td>{{ f.get('dst_ip','') }}</td>
+            <td>{{ f.get('protocol','') }}</td>
+            <td>{{ f.get('dport','') }}</td>
+            <td>{{ f.get('packets',0) }}</td>
+            <td>{{ f.get('bytes',0) }}</td>
+            <td>{{ f.get('risk') or f.get('severity') or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card comm-detail-card">
+    <h3>Flow Details</h3>
+    <div id="detailEmpty" class="muted">Select a communication row to inspect details.</div>
+    <div id="detail" style="display:none">
+      <div class="button-row">
+        <button type="button" onclick="bookmarkCurrent()" id="bookmarkBtn">Bookmark Flow</button>
+        <a class="btn" id="srcAsset" href="#">Source Asset</a>
+        <a class="btn" id="dstAsset" href="#">Destination Asset</a>
+        <a class="btn" id="mitreLink" href="/mitre">Heat Map</a>
+      </div>
+
+      <div class="detail-grid">
+        <div><b>Flow ID</b><br><span id="dFlowId"></span></div>
+        <div><b>Source</b><br><span id="dSrc"></span></div>
+        <div><b>Destination</b><br><span id="dDst"></span></div>
+        <div><b>Protocol</b><br><span id="dProto"></span></div>
+        <div><b>Port</b><br><span id="dPort"></span></div>
+        <div><b>Packets</b><br><span id="dPackets"></span></div>
+        <div><b>Bytes</b><br><span id="dBytes"></span></div>
+        <div><b>Duration</b><br><span id="dDuration"></span></div>
+        <div><b>First Seen</b><br><span id="dFirst"></span></div>
+        <div><b>Last Seen</b><br><span id="dLast"></span></div>
+        <div><b>Risk</b><br><span id="dRisk"></span></div>
+        <div><b>Confidence</b><br><span id="dConfidence"></span></div>
+      </div>
+
+      <h4>Investigation Context</h4>
+      <div id="dTags"></div>
+
+      <h4>ATT&CK Evidence</h4>
+      <div id="dAttack" class="muted">No ATT&CK mappings for this flow.</div>
+
+      <h4>Rule Validation</h4>
+      <div id="dRules" class="muted">No rule matches for this flow.</div>
+
+      <h4>Flow Timeline</h4>
+      <ol id="dTimeline" class="timeline"></ol>
+
+      <h4>Packet Drill-down</h4>
+      <div id="dPacketsView" class="muted">Packet samples are not available for this flow. Summary fields are shown above.</div>
+
+      <h4>Related Communications</h4>
+      <div id="dRelated"></div>
+
+      <h4>IOC Extraction</h4>
+      <div id="dIocs" class="muted">No extracted IOCs for this flow.</div>
+
+      <h4>Analyst Notes</h4>
+      <textarea id="flowNote" rows="4" placeholder="Add notes for this flow"></textarea>
+      <div class="button-row"><button type="button" onclick="saveNote()">Save Note</button><span id="noteStatus" class="muted"></span></div>
+    </div>
+  </div>
+</section>
+
+<script id="flows-json" type="application/json">{{ (result.get('flows', []) or []) | tojson }}</script>
+<script>
+const flows = JSON.parse(document.getElementById('flows-json').textContent || '[]');
+let currentIndex = null;
+
+function qs(name){ return new URLSearchParams(window.location.search).get(name) || ''; }
+function norm(s){ return String(s || '').toLowerCase(); }
+function arr(v){ return Array.isArray(v) ? v : (v ? [v] : []); }
+function flowId(f){ return f.flow_id || [f.src_ip || '', f.dst_ip || '', f.protocol || '', f.dport || ''].join('|'); }
+function isInternal(ip){ return /^(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(String(ip || '')); }
+function field(f, names, fallback=''){
+  for(const n of names){ if(f[n] !== undefined && f[n] !== null && f[n] !== '') return f[n]; }
+  return fallback;
+}
+function techniques(f){ return arr(f.attack || f.techniques || f.mitre || f.attack_ids || f.validated_techniques); }
+function rules(f){ return arr(f.rules || f.rule_matches || f.matched_rules || f.validations); }
+function flowText(f){ return norm(JSON.stringify(f)); }
+function getSelectedRows(){ return [...document.querySelectorAll('#t tbody tr')].filter(r => r.querySelector('.flow-select')?.checked); }
+function getSelectedFlows(){ return getSelectedRows().map(r => flows[Number(r.dataset.index)]).filter(Boolean); }
+
+function populateProtocolFilter(){
+  const proto = document.getElementById('proto');
+  [...new Set(flows.map(f => field(f, ['protocol','proto'])).filter(Boolean))].sort().forEach(p => {
+    const opt = document.createElement('option'); opt.value = p; opt.textContent = p; proto.appendChild(opt);
+  });
+}
+
+function applyFilters(){
+  const q = norm(document.getElementById('q').value);
+  const src = norm(document.getElementById('src').value);
+  const dst = norm(document.getElementById('dst').value);
+  const proto = norm(document.getElementById('proto').value);
+  const port = norm(document.getElementById('port').value);
+  const minPackets = Number(document.getElementById('minPackets').value || 0);
+  const minBytes = Number(document.getElementById('minBytes').value || 0);
+  const outcome = document.getElementById('outcome').value;
+  let shown = 0;
+  let first = null;
+  document.querySelectorAll('#t tbody tr').forEach(r => {
+    const f = flows[Number(r.dataset.index)] || {};
+    const fsrc = norm(field(f, ['src_ip','src','source','source_ip']));
+    const fdst = norm(field(f, ['dst_ip','dst','destination','destination_ip']));
+    const fproto = norm(field(f, ['protocol','proto']));
+    const fport = norm(field(f, ['dport','dst_port','port']));
+    const packets = Number(field(f, ['packets','packet_count'], 0));
+    const bytes = Number(field(f, ['bytes','byte_count'], 0));
+    const attack = techniques(f);
+    const ruleList = rules(f);
+    const risk = norm(field(f, ['risk','severity','priority']));
+    let outcomeMatch = true;
+    if(outcome === 'rule') outcomeMatch = ruleList.length > 0;
+    if(outcome === 'attack') outcomeMatch = attack.length > 0;
+    if(outcome === 'validated') outcomeMatch = arr(f.validated || f.validated_techniques).length > 0 || flowText(f).includes('validated');
+    if(outcome === 'external') outcomeMatch = !isInternal(field(f, ['dst_ip','dst','destination','destination_ip'])) || !isInternal(field(f, ['src_ip','src','source','source_ip']));
+    if(outcome === 'internal') outcomeMatch = isInternal(field(f, ['dst_ip','dst','destination','destination_ip'])) && isInternal(field(f, ['src_ip','src','source','source_ip']));
+    if(outcome === 'suspicious') outcomeMatch = ['high','critical','suspicious'].some(x => risk.includes(x)) || attack.length > 0 || ruleList.length > 0;
+    const match = (!q || flowText(f).includes(q)) && (!src || fsrc.includes(src)) && (!dst || fdst.includes(dst)) && (!proto || fproto === proto) && (!port || fport.includes(port)) && packets >= minPackets && bytes >= minBytes && outcomeMatch;
+    r.style.display = match ? '' : 'none';
+    r.classList.toggle('highlight-flow', !!q && match);
+    if(match){ shown++; if(!first) first = r; }
+  });
+  document.getElementById('flowCount').textContent = `${shown} of ${flows.length} flows shown`;
+}
+
+function showDetail(index){
+  currentIndex = index;
+  const f = flows[index] || {};
+  document.getElementById('detailEmpty').style.display = 'none';
+  document.getElementById('detail').style.display = '';
+  document.querySelectorAll('#t tbody tr').forEach(r => r.classList.toggle('selected-flow', Number(r.dataset.index) === index));
+  const fid = flowId(f);
+  const src = field(f, ['src_ip','src','source','source_ip']);
+  const dst = field(f, ['dst_ip','dst','destination','destination_ip']);
+  const proto = field(f, ['protocol','proto']);
+  document.getElementById('dFlowId').textContent = fid;
+  document.getElementById('dSrc').textContent = src || '';
+  document.getElementById('dDst').textContent = dst || '';
+  document.getElementById('dProto').textContent = proto || '';
+  document.getElementById('dPort').textContent = field(f, ['dport','dst_port','port']);
+  document.getElementById('dPackets').textContent = field(f, ['packets','packet_count'], 0);
+  document.getElementById('dBytes').textContent = field(f, ['bytes','byte_count'], 0);
+  document.getElementById('dDuration').textContent = field(f, ['duration','duration_seconds'], 'unknown');
+  document.getElementById('dFirst').textContent = field(f, ['first_seen','start','start_time'], 'unknown');
+  document.getElementById('dLast').textContent = field(f, ['last_seen','end','end_time'], 'unknown');
+  document.getElementById('dRisk').textContent = field(f, ['risk','severity','priority'], 'not scored');
+  document.getElementById('dConfidence').textContent = field(f, ['confidence','score'], 'not scored');
+  document.getElementById('srcAsset').href = '/assets?q=' + encodeURIComponent(src || '');
+  document.getElementById('dstAsset').href = '/assets?q=' + encodeURIComponent(dst || '');
+
+  renderTags(f);
+  renderAttack(f);
+  renderRules(f);
+  renderTimeline(f);
+  renderPackets(f);
+  renderRelated(f);
+  renderIocs(f);
+  loadNote(fid);
+  updateBookmarkButton(fid);
+}
+
+function renderTags(f){
+  const tags = [];
+  if(isInternal(field(f, ['src_ip','src','source','source_ip'])) && isInternal(field(f, ['dst_ip','dst','destination','destination_ip']))) tags.push('Internal'); else tags.push('External');
+  if(techniques(f).length) tags.push('ATT&CK Mapped');
+  if(rules(f).length) tags.push('Rule Matched');
+  if(arr(f.validated || f.validated_techniques).length) tags.push('Validated');
+  if(field(f, ['risk','severity','priority'])) tags.push(field(f, ['risk','severity','priority']));
+  document.getElementById('dTags').innerHTML = tags.map(t => `<span class="pill">${escapeHtml(t)}</span>`).join('');
+}
+function renderAttack(f){
+  const atk = techniques(f);
+  const evidence = arr(f.evidence || f.attack_evidence || f.reason || f.rationale);
+  document.getElementById('dAttack').innerHTML = atk.length ? atk.map(t => `<div class="mini-card"><b>${escapeHtml(t.id || t.technique_id || t)}</b> ${escapeHtml(t.name || t.technique || '')}<br><small>${escapeHtml(t.reason || evidence.join('; ') || 'Mapped from flow context.')}</small></div>`).join('') : 'No ATT&CK mappings for this flow.';
+}
+function renderRules(f){
+  const rs = rules(f);
+  document.getElementById('dRules').innerHTML = rs.length ? rs.map(r => `<div class="mini-card"><b>${escapeHtml(r.name || r.rule || r)}</b><br><small>${escapeHtml(r.explanation || r.reason || r.evidence || 'Rule matched this communication.')}</small></div>`).join('') : 'No rule matches for this flow.';
+}
+function renderTimeline(f){
+  const items = [];
+  const first = field(f, ['first_seen','start','start_time']);
+  const last = field(f, ['last_seen','end','end_time']);
+  if(first) items.push(`${first}: flow first observed`);
+  if(field(f, ['protocol','proto'])) items.push(`${field(f, ['protocol','proto'])}: communication established`);
+  if(techniques(f).length) items.push(`ATT&CK mapped: ${techniques(f).map(x => x.id || x).join(', ')}`);
+  if(rules(f).length) items.push(`Rules matched: ${rules(f).map(x => x.name || x.rule || x).join(', ')}`);
+  if(last) items.push(`${last}: flow last observed`);
+  document.getElementById('dTimeline').innerHTML = items.length ? items.map(x => `<li>${escapeHtml(x)}</li>`).join('') : '<li>No timeline fields are available for this flow.</li>';
+}
+function renderPackets(f){
+  const packets = arr(f.packet_samples || f.packets_sample || f.samples || f.packets_detail);
+  document.getElementById('dPacketsView').innerHTML = packets.length ? `<pre>${escapeHtml(JSON.stringify(packets.slice(0,20), null, 2))}</pre>` : 'Packet samples are not available for this flow. Summary fields are shown above.';
+}
+function renderRelated(f){
+  const src = field(f, ['src_ip','src','source','source_ip']);
+  const dst = field(f, ['dst_ip','dst','destination','destination_ip']);
+  const rel = flows.map((x,i)=>({x,i})).filter(o => o.i !== currentIndex && [field(o.x,['src_ip','src','source','source_ip']), field(o.x,['dst_ip','dst','destination','destination_ip'])].some(v => v === src || v === dst)).slice(0,8);
+  document.getElementById('dRelated').innerHTML = rel.length ? rel.map(o => `<button type="button" class="link-button" onclick="showDetail(${o.i})">${escapeHtml(field(o.x,['src_ip','src','source','source_ip']))} → ${escapeHtml(field(o.x,['dst_ip','dst','destination','destination_ip']))} ${escapeHtml(field(o.x,['protocol','proto']))}/${escapeHtml(field(o.x,['dport','dst_port','port']))}</button>`).join('') : '<span class="muted">No related communications found.</span>';
+}
+function renderIocs(f){
+  const vals = [];
+  ['domain','domains','url','urls','sni','tls_sni','host','http_host','user_agent','certificate','cert_subject','email','filename'].forEach(k => arr(f[k]).forEach(v => vals.push(`${k}: ${v}`)));
+  document.getElementById('dIocs').innerHTML = vals.length ? vals.map(v => `<span class="pill">${escapeHtml(v)}</span>`).join('') : 'No extracted IOCs for this flow.';
+}
+function noteKey(fid){ return 'pcap-flow-note-' + fid; }
+function bookmarkKey(fid){ return 'pcap-flow-bookmark-' + fid; }
+function loadNote(fid){ document.getElementById('flowNote').value = localStorage.getItem(noteKey(fid)) || ''; document.getElementById('noteStatus').textContent = ''; }
+function saveNote(){ if(currentIndex === null) return; const fid = flowId(flows[currentIndex]); localStorage.setItem(noteKey(fid), document.getElementById('flowNote').value); document.getElementById('noteStatus').textContent = 'Saved'; }
+function updateBookmarkButton(fid){ document.getElementById('bookmarkBtn').textContent = localStorage.getItem(bookmarkKey(fid)) === '1' ? 'Remove Bookmark' : 'Bookmark Flow'; }
+function bookmarkCurrent(){ if(currentIndex === null) return; const fid = flowId(flows[currentIndex]); const k = bookmarkKey(fid); if(localStorage.getItem(k) === '1') localStorage.removeItem(k); else localStorage.setItem(k, '1'); updateBookmarkButton(fid); }
+function clearSelection(){ document.querySelectorAll('.flow-select').forEach(c => c.checked = false); document.getElementById('selectAll').checked = false; updateSelectionCount(); }
+function toggleSelectAll(checked){ document.querySelectorAll('#t tbody tr').forEach(r => { if(r.style.display !== 'none') r.querySelector('.flow-select').checked = checked; }); updateSelectionCount(); }
+function updateSelectionCount(){ const n = getSelectedRows().length; const base = document.getElementById('flowCount').textContent.split(' | ')[0]; document.getElementById('flowCount').textContent = base + (n ? ` | ${n} selected` : ''); }
+function exportSelected(type){
+  const selected = getSelectedFlows(); const data = selected.length ? selected : flows;
+  if(type === 'json') download('selected_flows.json', JSON.stringify(data, null, 2), 'application/json');
+  else download('selected_flows.csv', toCsv(data), 'text/csv');
+}
+function toCsv(data){
+  const cols = ['flow_id','src_ip','dst_ip','protocol','dport','packets','bytes','risk','severity','confidence'];
+  const esc = v => '"' + String(v ?? '').replaceAll('"','""') + '"';
+  return cols.join(',') + '\n' + data.map(f => cols.map(c => esc(f[c] ?? (c==='flow_id'?flowId(f):''))).join(',')).join('\n');
+}
+function download(name, text, type){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); URL.revokeObjectURL(a.href); }
+function escapeHtml(v){ return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+window.addEventListener('DOMContentLoaded', () => {
+  populateProtocolFilter();
+  document.querySelectorAll('#t tbody tr').forEach(r => r.addEventListener('click', () => showDetail(Number(r.dataset.index))));
+  const ip = qs('ip');
+  const srcParam = qs('src');
+  const q = qs('q');
+  if(ip){ document.getElementById('src').value = ip; document.getElementById('q').value = ip; }
+  else if(srcParam){ document.getElementById('src').value = srcParam; }
+  if(q){ document.getElementById('q').value = q; }
+  applyFilters();
+  const flow = qs('flow');
+  if(flow){
+    const row = [...document.querySelectorAll('#t tbody tr')].find(r => r.dataset.flowId === flow || r.dataset.flowId.includes(flow));
+    if(row){ row.scrollIntoView({behavior:'smooth', block:'center'}); showDetail(Number(row.dataset.index)); row.classList.add('highlight-flow'); }
+  }
+});
+</script>
+{% endblock %}

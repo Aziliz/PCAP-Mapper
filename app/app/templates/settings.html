@@ -1,0 +1,77 @@
+{% extends 'base.html' %}
+{% block body %}
+<section class="card">
+  <h2>Settings</h2>
+  {% if message %}<p class="alert">{{ message }}</p>{% endif %}
+  <form method="post" action="/settings">
+    <section class="settings-section">
+      <h3>Profiles</h3>
+      <p class="muted">Controls how many analysis worker threads are started. PCAP parsing remains cooperative and the UI stays responsive.</p>
+      <label>Performance profile
+        <select name="performance_profile">
+          <option value="maximum_performance" {% if app_settings.performance_profile == 'maximum_performance' %}selected{% endif %}>Maximum Performance — use all but one logical core</option>
+          <option value="balanced" {% if app_settings.performance_profile == 'balanced' %}selected{% endif %}>Balanced — use about 50% of cores</option>
+          <option value="low_impact" {% if app_settings.performance_profile == 'low_impact' %}selected{% endif %}>Low Impact — use about 10–25% of cores</option>
+        </select>
+      </label>
+      <div class="summary-grid">
+        <div><b>Logical cores</b><br>{{ app_settings.logical_cores }}</div>
+        <div><b>Configured workers</b><br>{{ app_settings.worker_count }}</div>
+        <div><b>Default profile</b><br>Balanced</div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Storage Management</h3>
+      <label>Capture archival policy
+        <select name="archive_policy">
+          <option value="delete_after_analysis" {% if storage_settings.archive_policy == 'delete_after_analysis' %}selected{% endif %}>Delete original after analysis; keep parsed data only</option>
+          <option value="compress_after_analysis" {% if storage_settings.archive_policy == 'compress_after_analysis' %}selected{% endif %}>Compress after successful analysis</option>
+          <option value="keep_raw" {% if storage_settings.archive_policy == 'keep_raw' %}selected{% endif %}>Never compress; keep original PCAPs</option>
+        </select>
+      </label>
+      <div class="summary-grid">
+        <div><b>Stored captures</b><br>{{ storage_stats.capture_count }}</div>
+        <div><b>Job upload tables</b><br>{{ storage_stats.job_inventory_count or 0 }} job(s), {{ storage_stats.inventory_count or 0 }} filename(s)</div>
+        <div><b>Raw storage</b><br>{{ '%.2f'|format((storage_stats.raw_bytes or 0)/1024/1024) }} MB</div>
+        <div><b>Compressed storage</b><br>{{ '%.2f'|format((storage_stats.compressed_bytes or 0)/1024/1024) }} MB</div>
+        <div><b>Compression savings</b><br>{% if storage_stats.compression_savings_percent is not none %}{{ storage_stats.compression_savings_percent }}%{% else %}n/a{% endif %}</div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Export Settings</h3>
+      <label>Default backup type
+        <select name="default_backup_type">
+          <option value="job" {% if app_settings.default_backup_type == 'job' %}selected{% endif %}>Job Backup — selected/all jobs, generated reports, custom rules, custom telemetry, settings</option>
+          <option value="configuration" {% if app_settings.default_backup_type == 'configuration' %}selected{% endif %}>Configuration Backup — no jobs; custom rules, custom telemetry, settings</option>
+          <option value="workspace" {% if app_settings.default_backup_type == 'workspace' %}selected{% endif %}>Full Workspace Backup — all jobs plus custom configuration</option>
+        </select>
+      </label>
+      <label><input type="checkbox" name="include_captures_in_exports_default" value="1" {% if app_settings.include_captures_in_exports_default %}checked{% endif %}> Include stored captures in job/workspace backups by default</label>
+      <p class="muted">Backups exclude built-in telemetry plugins, built-in ATT&amp;CK bundles, bundled reports, and application code. They include generated reports, parsed results, custom/imported telemetry plugins, custom rules, custom environment profile overrides, and settings. Captures are included only when enabled.</p>
+    </section>
+
+
+
+    <section class="settings-section">
+      <h3>Telemetry Plugin Registry</h3>
+      <p class="muted">Modular telemetry definitions extend detection, potential coverage, recommendations, and reports without adding new dependencies.</p>
+      <div class="summary-grid">
+        <div><b>Loaded plugins</b><br>{{ telemetry_registry.plugin_count if telemetry_registry else 0 }}</div>
+        {% for category,count in (telemetry_registry.categories or {}).items() %}
+        <div><b>{{ category }}</b><br>{{ count }}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Other Settings</h3>
+      <label><input type="checkbox" name="reports_background" value="1" {% if app_settings.reports_background %}checked{% endif %}> Prefer background-style report generation indicators</label>
+      <p class="muted">Additional runtime configuration can still be supplied through environment variables for container deployments.</p>
+    </section>
+
+    <button type="submit">Save Settings</button>
+  </form>
+</section>
+{% endblock %}

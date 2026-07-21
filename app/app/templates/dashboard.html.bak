@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block body %}
+{% set safe_result = result if result is mapping else {} %}
+{% set iocs = safe_result.get('iocs') or {} %}
+{% set ioc_ips = iocs.get('ips') or [] %}
+{% set ioc_domains = iocs.get('domains') or [] %}
+{% set ioc_urls = iocs.get('urls') or [] %}
+{% set summary = safe_result.get('summary') or {} %}
+{% set findings = safe_result.get('findings') or [] %}
+{% set flows = safe_result.get('flows') or [] %}
+{% set hosts = safe_result.get('hosts') or [] %}
+<section class="card">
+  <div class="row-between">
+    <h2>Upload or append PCAPs</h2>
+    <form method="post" class="inline-form">
+      <input type="hidden" name="action" value="new_job">
+      <button type="submit">Start New Job</button>
+    </form>
+  </div>
+  {% if duplicate_message %}<p class="alert">{{ duplicate_message }}</p>{% endif %}
+  {% if invalid_upload_message %}<p class="alert">{{ invalid_upload_message }}</p>{% endif %}
+  <form method="post" enctype="multipart/form-data">
+    <label>PCAP files
+      <input type="file" name="pcaps" multiple accept=".pcap,.pcapng,.gz,.bz2,.xz,.zip,.tar,.tgz,.tbz,.tbz2,.txz">
+    </label>
+    <label>PCAP directory
+      <input type="file" name="pcaps" multiple webkitdirectory mozdirectory directory>
+    </label>
+    <p><small>Select individual captures, compressed captures, archives, or a folder. Supported: .pcap, .pcapng, .pcap.gz, .pcapng.gz, .pcap.bz2, .pcapng.bz2, .pcap.xz, .pcapng.xz, .zip, .tar, .tar.gz/.tgz, .tar.bz2/.tbz2, and .tar.xz/.txz. Archives and folders are scanned for PCAP/PCAPNG files; other files are ignored.</small></p>
+    <label><input type="checkbox" name="validate_during_analysis" value="1"> Run full rule validation during analysis <small>(slower)</small></label>
+    <input type="hidden" name="append_to" value="{{ job_id or '' }}">
+    <button>Analyze / Append</button>
+  </form>
+  <p>Latest job: {{ job_id or 'none' }}</p>
+</section>
+<section class="grid">
+  <div class="card">
+    <h3>Summary</h3>
+    {% for k,v in summary.items() %}<p><b>{{ k }}</b>: {{ v }}</p>{% else %}<p>No analysis results yet.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h3>Threat Hunting</h3>
+    {% for f in findings[:8] %}
+      {% if f is mapping %}
+        {% set flow_target = f.get('flow_id') or f.get('flow_query') or f.get('src_ip') or '' %}
+        <a class="finding-link" href="/communications?job={{ job_id or '' }}&q={{ flow_target|urlencode }}">
+          <b>{{ f.get('severity','info') }}</b> {{ f.get('title','Finding') }}<br>
+          <small>{{ f.get('evidence','') }}</small>
+        </a>
+      {% else %}
+        <p>{{ f }}</p>
+      {% endif %}
+    {% else %}<p>No findings yet.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h3>IOC Center</h3>
+    <p>External IPs: {{ ioc_ips|length }}</p>
+    <p>Domains: {{ ioc_domains|length }}</p>
+    <p>URLs: {{ ioc_urls|length }}</p>
+    <details><summary>Show IOCs</summary><pre>{{ {'ips': ioc_ips, 'domains': ioc_domains, 'urls': ioc_urls} | tojson(indent=2) }}</pre></details>
+  </div>
+</section>
+<section class="card">
+  <h2>Visual Network Map</h2>
+  <label>Min packets <input id="minp" type="number" value="1"></label>
+  <button onclick="draw()">Refresh</button>
+  <svg id="map" width="100%" height="520"></svg>
+  <div id="map-info" class="card map-info"><p>Click a node for host details or a line for flow options.</p></div>
+</section>
+<script id="flows" type="application/json">{{ flows|tojson }}</script>
+<script id="hosts" type="application/json">{{ hosts|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="/static/map.js"></script>{% endblock %}

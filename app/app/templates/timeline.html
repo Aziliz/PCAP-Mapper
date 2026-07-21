@@ -1,0 +1,5 @@
+{% extends 'base.html' %}{% block body %}
+<section class="card"><h2>Combined Timeline</h2><p class="muted">Chronological view of normalized events, ATT&CK mappings, rule matches, and representative flows.</p></section>
+<section class="card"><table><tr><th>Time</th><th>Kind</th><th>Source</th><th>Destination</th><th>Context</th><th>ATT&CK / Rule</th></tr>
+{% for item in timeline %}<tr><td>{{ item.time }}</td><td>{{ item.kind }}</td><td>{{ item.src }}</td><td>{{ item.dst }}</td><td>{{ item.context }}</td><td>{{ item.attack }}</td></tr>{% else %}<tr><td colspan="6">No timeline data yet.</td></tr>{% endfor %}
+</table></section>{% endblock %}

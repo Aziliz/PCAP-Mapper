@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% block body %}
+<section class="card">
+  <div class="row-between">
+    <h2>Jobs</h2>
+    <div class="button-row"><a class="button" href="/previous/export">Export Backup</a><a class="button secondary" href="/settings">Export Settings</a></div>
+  </div>
+  {% if import_message %}<p class="alert">{{ import_message }}</p>{% endif %}
+  <form method="post" action="/previous/import" enctype="multipart/form-data" class="inline-form">
+    <label>Import jobs backup <input type="file" name="previous_results" accept=".zip"></label>
+    <button type="submit">Import</button>
+  </form>
+  <p><small>The export button follows the backup type and capture options configured on the Settings page. Built-in telemetry, ATT&CK bundles, bundled reports, and application code are never included.</small></p>
+</section>
+
+<section class="card">
+  <table>
+    <tr><th>Name</th><th>Job ID</th><th>State</th><th>Storage</th><th>Created</th><th>Open</th><th>Controls</th><th>Export</th><th>Rename</th><th>Delete</th></tr>
+    {% for id,j in jobs.items() %}
+    <tr>
+      <td>{{ j.name if j.name else ('Job ' ~ id[:8]) }}</td>
+      <td><small>{{id}}</small></td>
+      <td>{{j.state}}</td>
+      <td>{% if j.storage_capture_deleted %}<span class="badge">parsed only</span>{% elif j.storage_compression_complete %}<span class="badge">.gz compressed</span>{% elif j.storage_archive_policy == 'keep_raw' %}<span class="badge">raw retained</span>{% else %}<small>pending/legacy</small>{% endif %}</td>
+      <td>{{j.created}}</td>
+      <td><a href="/jobs/{{id}}">status</a> | <a href="/?job={{id}}">dashboard</a></td>
+      <td>{% if j.state in ['queued','running','uploading','decompressing'] %}<form method="post" action="/jobs/{{id}}/pause" style="display:inline"><input type="hidden" name="next" value="/previous"><button type="submit">Pause</button></form><form method="post" action="/jobs/{{id}}/stop" style="display:inline" onsubmit="return confirm('Stop this job?')"><input type="hidden" name="next" value="/previous"><button type="submit" class="danger">Stop</button></form>{% elif j.state == 'paused' %}<form method="post" action="/jobs/{{id}}/resume" style="display:inline"><input type="hidden" name="next" value="/previous"><button type="submit">Resume</button></form><form method="post" action="/jobs/{{id}}/stop" style="display:inline" onsubmit="return confirm('Stop this job?')"><input type="hidden" name="next" value="/previous"><button type="submit" class="danger">Stop</button></form>{% else %}<small>—</small>{% endif %}</td>
+      <td><a href="/previous/{{id}}/export">Export</a></td>
+      <td>
+        <form method="post" action="/jobs/{{id}}/rename" class="inline-form rename-form">
+          <input type="hidden" name="next" value="/previous">
+          <input name="name" value="{{ j.name if j.name else '' }}" placeholder="Job name">
+          <button type="submit">Rename</button>
+        </form>
+      </td>
+      <td>{% if j.state != 'running' %}<form method="post" action="/previous/{{id}}/delete" onsubmit="return confirm('Delete this previous result?')"><button type="submit">Delete</button></form>{% else %}<small>Running</small>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="10">No jobs.</td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

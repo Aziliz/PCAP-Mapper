@@ -1,0 +1,16 @@
+{% extends 'base.html' %}{% block body %}<section class="card"><h2>Assets</h2><input id="assetSearch" type="search" placeholder="Search assets" aria-label="Search assets" style="max-width:320px;margin:0 0 10px 0;"><table id="assetTable"><tr><th>IP</th><th>MACs</th><th>Role</th><th>Protocols</th><th>Bytes</th></tr>{% for h in result.get('hosts', []) or [] %}<tr class="asset-row"><td>{{h.get('ip','')}}</td><td>{{(h.get('macs',[]) or [])|join(', ')}}</td><td>{{h.get('role','Unknown')}}</td><td>{{(h.get('protocols',[]) or [])|join(', ')}}</td><td>{{h.get('bytes',0)}}</td></tr>{% endfor %}</table></section>{% endblock %}{% block scripts %}<script>
+const assetSearch = document.getElementById('assetSearch');
+if (assetSearch) {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('ip')) assetSearch.value = params.get('ip');
+  else if (params.get('q')) assetSearch.value = params.get('q');
+  function applyAssetSearch() {
+    const query = assetSearch.value.toLowerCase().trim();
+    document.querySelectorAll('#assetTable .asset-row').forEach(row => {
+      row.style.display = row.textContent.toLowerCase().includes(query) ? '' : 'none';
+    });
+  }
+  assetSearch.addEventListener('input', applyAssetSearch);
+  applyAssetSearch();
+}
+</script>{% endblock %}
