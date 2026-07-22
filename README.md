@@ -3,21 +3,19 @@
 This is a program to automate mapping pcaps to the Mitre Navigatior/Att&ck. Currently supports Mitre Stix v13-v19 with v18 being default. Has basic analysis tools, and is mainly used for creating Mitre heat maps. There's multiple methods of analysis added, by default it's based off Mitre Stix, but also includes heuristic analysis.
 
 # Technicial Notes
-Those program was purposly made with limited python libraries.
+Those program was purposly made with limited python libraries. I've also included a simulated linux and windows test pcap environment to verify functionality.
 
--Python
--Flask
--Scapy
-
-I've also included a simulated linux and windows test pcap environment to verify functionality.
+-Python  
+-Flask  
+-Scapy  
 
 # Build
 
 How I've been building:
-1. Unzip the pcap directory
-2. cd into to pcap mapper directory
-3. docker build -t pcap-mapper .
-4. docker run --rm --name pcap-mapper -p 8000:8000 -v "$PWD/uploads:/app/uploads:Z" -v "$PWD/results:/app/results:Z" --memory=8g pcap-mapper
+1. Unzip the pcap directory  
+2. cd into to pcap mapper directory  
+3. docker build -t pcap-mapper .  
+4. docker run --rm --name pcap-mapper -p 8000:8000 -v "$PWD/uploads:/app/uploads:Z" -v "$PWD/results:/app/results:Z" --memory=8g pcap-mapper  
 
 Feel free to test and let me know if any features are requested.
 
@@ -58,6 +56,22 @@ Also export the mapping to the Mitre Attack Navigator for a comprehensive view.
 
 <img width="3126" height="1548" alt="Screenshot From 2026-07-15 11-34-45" src="https://github.com/user-attachments/assets/d2242ee8-1e4e-440d-822d-59f60b9722c8" />
 
-Red shows clearly defined threats based off of PCAP information.
-Yellow shows possible threats but analysts are needed to verify false positives.
-Green shows a theoretical network coverage, based on telemetry, to map logs to multiple attack types. Shows possible attacks based off of correlated log types.
+Color Schema and their purpose:
+Theoretical (Blue) = "We should be able to see this because of our telemetry."  
+Detectable (Green) = "We actually have detection logic for this technique."  
+Validated (Yellow) = "That detection logic has successfully matched real evidence."  
+Observed (Red) = "This technique has actually occurred in this environment."  
+
+How to report each color to management:
+
+Blue = potential capability,  
+Green = implemented capability,  
+Yellow = proven capability,  
+Red = observed activity,  
+
+How each coverage is calculated:
+
+Theoretical Coverage = Blue + Green + Yellow + Red,  
+Detectable Coverage = Green + Yellow + Red,  
+Validated Coverage = Yellow + Red,  
+Observed Coverage = Red only 
